@@ -1,8 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
 using MonitoreoOrdenes.Data;
+using MonitoreoOrdenes.Helpers;
 using MonitoreoOrdenes.Models;
 
 namespace MonitoreoOrdenes.Forms
@@ -11,455 +14,807 @@ namespace MonitoreoOrdenes.Forms
     {
         private readonly OrdenCompraRepository _repo = new OrdenCompraRepository();
 
-        // Controles del dashboard
-        private Panel panelMenu, panelContent, panelHeader;
-        private Label lblBienvenida, lblFecha;
-        private Panel cardTotal, cardActivas, cardVencidas, cardCumplimiento, cardAlertas, cardDisputa;
+        // Layout
+        private Panel panelHeader, panelMenu, panelContent;
+
+        // Menú
+        private Button btnDashboard, btnOrdenes, btnAlertas,
+                       btnNuevaOrden, btnSalir;
+        private Button _btnActivo;
+
+        // KPI Cards (paneles simples)
+        private Panel cardTotal, cardActivas, cardVencidas,
+                      cardCumplimiento, cardAlertas, cardDisputa;
+
+        // Contenido
+        private Label    lblSeccion, lblSubtitulo;
+        private Panel    panelFiltros, panelKpis;
+        private TextBox  txtBusqueda;
+        private Button   btnBuscar, btnLimpiar;
         private DataGridView dgvOrdenes;
-        private Button btnVerOrdenes, btnVerAlertas, btnDashboard, btnSalir;
-        private Label lblSeccion;
-        private Timer timerActualizar;
+        private Label    lblContador;
+        private Timer    timerRefresh;
+
+        // Vista actual (en vez de comparar el texto de una etiqueta)
+        private enum Vista { Dashboard, Ordenes, Alertas }
+        private Vista _vista = Vista.Dashboard;
+        private bool  _cerrandoSesion;
 
         public FrmDashboard()
         {
             InitializeComponent();
             CargarDashboard();
-            ConfigurarTimer();
+            IniciarTimer();
         }
 
+        // ═══════════════════════════════════════════════════════
+        // INIT
+        // ═══════════════════════════════════════════════════════
         private void InitializeComponent()
         {
-            this.Text            = "Monitoreo de Órdenes de Compra — Develop Talent & Technology";
-            this.Size            = new Size(1280, 780);
+            this.Text            = "Monitoreo OC — PluriOne S.A. de C.V.";
+            this.Size            = new Size(1300, 800);
+            this.MinimumSize     = new Size(1100, 680);
             this.StartPosition   = FormStartPosition.CenterScreen;
-            this.MinimumSize     = new Size(1100, 650);
             this.BackColor       = Color.FromArgb(245, 247, 250);
-            this.FormClosing     += FrmDashboard_FormClosing;
+            this.FormClosing    += FrmDashboard_FormClosing;
 
             ConstruirHeader();
             ConstruirMenu();
-            ConstruirAreaContenido();
+            ConstruirContenido();
         }
 
-        // -------------------------------------------------------
+        private void FrmDashboard_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            timerRefresh?.Stop();
+            if (!_cerrandoSesion)
+                Application.Exit();
+        }
+
+        // ═══════════════════════════════════════════════════════
         // HEADER
-        // -------------------------------------------------------
+        // ═══════════════════════════════════════════════════════
         private void ConstruirHeader()
         {
             panelHeader = new Panel
             {
                 Dock      = DockStyle.Top,
-                Height    = 60,
-                BackColor = Color.FromArgb(30, 58, 95)
+                Height    = 55,
+                BackColor = Color.FromArgb(15, 52, 96)
             };
 
             var lblTitulo = new Label
             {
-                Text      = "📦  Plataforma de Monitoreo de Órdenes de Compra",
-                ForeColor = Color.White,
+                Text      = "Plataforma de Monitoreo de Órdenes de Compra",
                 Font      = new Font("Segoe UI", 13, FontStyle.Bold),
-                Location  = new Point(220, 18),
+                ForeColor = Color.White,
+                Location  = new Point(230, 16),
                 AutoSize  = true
             };
 
-            lblBienvenida = new Label
+            var lblUsuario = new Label
             {
-                Text      = $"👤 {FrmLogin.UsuarioActual?.NombreCompleto} | {FrmLogin.UsuarioActual?.RolNombre}",
-                ForeColor = Color.LightGray,
+                Name      = "lblUsuario",
+                Text      = $"  {FrmLogin.UsuarioActual?.NombreCompleto}  |  {FrmLogin.UsuarioActual?.RolNombre}",
                 Font      = new Font("Segoe UI", 9),
+                ForeColor = Color.FromArgb(170, 233, 238),
                 AutoSize  = true,
                 Anchor    = AnchorStyles.Top | AnchorStyles.Right
             };
 
-            lblFecha = new Label
+            var lblFecha = new Label
             {
-                Text      = DateTime.Now.ToString("dddd, dd MMMM yyyy", new System.Globalization.CultureInfo("es-MX")),
-                ForeColor = Color.LightSkyBlue,
+                Text      = DateTime.Now.ToString("ddd dd/MMM/yyyy",
+                            new System.Globalization.CultureInfo("es-MX")).ToUpper(),
                 Font      = new Font("Segoe UI", 8),
+                ForeColor = Color.FromArgb(148, 163, 184),
                 AutoSize  = true,
                 Anchor    = AnchorStyles.Top | AnchorStyles.Right
             };
 
-            panelHeader.Controls.AddRange(new Control[] { lblTitulo, lblBienvenida, lblFecha });
+            panelHeader.Controls.AddRange(new Control[] { lblTitulo, lblUsuario, lblFecha });
             panelHeader.Resize += (s, e) =>
             {
-                lblBienvenida.Location = new Point(panelHeader.Width - lblBienvenida.Width - 20, 12);
-                lblFecha.Location      = new Point(panelHeader.Width - lblFecha.Width - 20, 36);
+                lblUsuario.Location = new Point(panelHeader.Width - lblUsuario.Width - 20, 10);
+                lblFecha.Location   = new Point(panelHeader.Width - lblFecha.Width - 20, 33);
             };
 
             this.Controls.Add(panelHeader);
         }
 
-        // -------------------------------------------------------
+        // ═══════════════════════════════════════════════════════
         // MENÚ LATERAL
-        // -------------------------------------------------------
+        // ═══════════════════════════════════════════════════════
         private void ConstruirMenu()
         {
             panelMenu = new Panel
             {
                 Width     = 200,
-                BackColor = Color.FromArgb(22, 44, 72),
-                Dock      = DockStyle.Left
+                Dock      = DockStyle.Left,
+                BackColor = Color.FromArgb(10, 37, 64)
             };
 
-            // Logo empresa
-            var lblLogo = new Label
+            // Logo
+            var panelLogo = new Panel
+            {
+                Dock      = DockStyle.Top,
+                Height    = 55,
+                BackColor = Color.FromArgb(5, 25, 50)
+            };
+            panelLogo.Controls.Add(new Label
             {
                 Text      = "PLURIONE",
-                ForeColor = Color.White,
-                Font      = new Font("Segoe UI", 14, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Font      = new Font("Segoe UI", 15, FontStyle.Bold),
+                ForeColor = Color.FromArgb(0, 173, 181),
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter
+            });
+            panelMenu.Controls.Add(panelLogo);
+
+            // Separador
+            panelMenu.Controls.Add(new Label
+            {
+                Height    = 1,
                 Dock      = DockStyle.Top,
-                Height    = 50,
-                BackColor = Color.FromArgb(30, 58, 95)
-            };
-            panelMenu.Controls.Add(lblLogo);
+                BackColor = Color.FromArgb(30, 255, 255, 255)
+            });
 
-            btnDashboard  = CrearBotonMenu("🏠  Dashboard",  new Point(0, 60));
-            btnVerOrdenes = CrearBotonMenu("📋  Órdenes",    new Point(0, 105));
-            btnVerAlertas = CrearBotonMenu("🔔  Alertas",    new Point(0, 150));
-            btnSalir      = CrearBotonMenu("🚪  Cerrar Sesión", new Point(0, 195));
+            // Etiqueta
+            panelMenu.Controls.Add(new Label
+            {
+                Text      = "  NAVEGACIÓN",
+                Font      = new Font("Segoe UI", 7, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 148, 163, 184),
+                Dock      = DockStyle.Top,
+                Height    = 28,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding   = new Padding(12, 0, 0, 0)
+            });
 
-            btnDashboard.BackColor  = Color.FromArgb(42, 74, 112);  // activo por defecto
-            btnDashboard.Click  += (s, e) => { MostrarDashboard();        ActualizarMenuActivo(btnDashboard); };
-            btnVerOrdenes.Click += (s, e) => { MostrarListaOrdenes();     ActualizarMenuActivo(btnVerOrdenes); };
-            btnVerAlertas.Click += (s, e) => { MostrarAlertas();          ActualizarMenuActivo(btnVerAlertas); };
+            // Solo mostrar "Nueva Orden" si es Admin o Comprador
+            bool puedeCrear = FrmLogin.UsuarioActual?.RolId <= 2;
+
+            btnDashboard  = CrearBtnMenu("  Dashboard");
+            btnOrdenes    = CrearBtnMenu("  Ordenes");
+            btnAlertas    = CrearBtnMenu("  Alertas");
+            btnNuevaOrden = CrearBtnMenu("  + Nueva Orden");
+            btnSalir      = CrearBtnMenu("  Cerrar Sesion");
+
+            btnNuevaOrden.BackColor = Color.FromArgb(0, 120, 130);
+            btnNuevaOrden.ForeColor = Color.White;
+            btnNuevaOrden.Visible   = puedeCrear;
+
+            btnDashboard.Click  += (s, e) => { ActivarMenu(btnDashboard);  MostrarDashboard(); };
+            btnOrdenes.Click    += (s, e) => { ActivarMenu(btnOrdenes);    MostrarOrdenes(); };
+            btnAlertas.Click    += (s, e) => { ActivarMenu(btnAlertas);    MostrarAlertas(); };
+            btnNuevaOrden.Click += (s, e) => AbrirNuevaOrden();
             btnSalir.Click      += (s, e) => CerrarSesion();
 
-            panelMenu.Controls.AddRange(new Control[] { btnDashboard, btnVerOrdenes, btnVerAlertas, btnSalir });
+            var spacer = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(10, 37, 64) };
+
+            panelMenu.Controls.Add(spacer);
+            panelMenu.Controls.Add(btnSalir);
+            if (puedeCrear) panelMenu.Controls.Add(btnNuevaOrden);
+            panelMenu.Controls.Add(btnAlertas);
+            panelMenu.Controls.Add(btnOrdenes);
+            panelMenu.Controls.Add(btnDashboard);
+
+            ActivarMenu(btnDashboard);
             this.Controls.Add(panelMenu);
         }
 
-        private Button CrearBotonMenu(string texto, Point ubicacion)
+        private Button CrearBtnMenu(string texto)
         {
-            return new Button
+            var btn = new Button
             {
                 Text      = texto,
-                Location  = ubicacion,
-                Size      = new Size(200, 44),
-                ForeColor = Color.White,
-                BackColor = Color.FromArgb(22, 44, 72),
+                Dock      = DockStyle.Top,
+                Height    = 44,
                 FlatStyle = FlatStyle.Flat,
-                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = Color.FromArgb(180, 220, 240, 255),
+                BackColor = Color.FromArgb(10, 37, 64),
                 Font      = new Font("Segoe UI", 10),
-                Cursor    = Cursors.Hand,
-                Padding   = new Padding(15, 0, 0, 0)
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding   = new Padding(16, 0, 0, 0),
+                Cursor    = Cursors.Hand
             };
+            btn.FlatAppearance.BorderSize = 0;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(25, 255, 255, 255);
+            return btn;
         }
 
-        private void ActualizarMenuActivo(Button activo)
+        private void ActivarMenu(Button btn)
         {
-            foreach (Control c in panelMenu.Controls)
-                if (c is Button btn && btn != btnSalir)
-                    btn.BackColor = Color.FromArgb(22, 44, 72);
-            activo.BackColor = Color.FromArgb(42, 74, 112);
+            if (_btnActivo != null)
+            {
+                _btnActivo.BackColor = Color.FromArgb(10, 37, 64);
+                _btnActivo.ForeColor = Color.FromArgb(180, 220, 240, 255);
+            }
+            btn.BackColor = Color.FromArgb(0, 173, 181);
+            btn.ForeColor = Color.White;
+            _btnActivo = btn;
         }
 
-        // -------------------------------------------------------
-        // ÁREA DE CONTENIDO
-        // -------------------------------------------------------
-        private void ConstruirAreaContenido()
+        // ═══════════════════════════════════════════════════════
+        // CONTENIDO
+        // ═══════════════════════════════════════════════════════
+        private void ConstruirContenido()
         {
             panelContent = new Panel
             {
-                BackColor = Color.FromArgb(245, 247, 250),
                 Dock      = DockStyle.Fill,
-                Padding   = new Padding(20)
+                BackColor = Color.FromArgb(245, 247, 250),
+                Padding   = new Padding(0)
             };
 
+            // Encabezado sección
             lblSeccion = new Label
             {
-                Text     = "Dashboard",
-                Font     = new Font("Segoe UI", 16, FontStyle.Bold),
-                ForeColor= Color.FromArgb(30, 58, 95),
-                Location = new Point(20, 10),
-                AutoSize = true
+                Text      = "Dashboard",
+                Font      = new Font("Segoe UI", 18, FontStyle.Bold),
+                ForeColor = Color.FromArgb(30, 40, 55),
+                Location  = new Point(20, 16),
+                AutoSize  = true
             };
+            lblSubtitulo = new Label
+            {
+                Text      = "Resumen general del estado de las ordenes de compra",
+                Font      = new Font("Segoe UI", 9),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Location  = new Point(20, 44),
+                AutoSize  = true
+            };
+
+            panelContent.Controls.Add(lblSubtitulo);
             panelContent.Controls.Add(lblSeccion);
 
-            ConstruirTarjetasKPI();
-            ConstruirGridOrdenes();
+            ConstruirKPIs();
+            ConstruirFiltros();
+            ConstruirGrid();
 
             this.Controls.Add(panelContent);
         }
 
-        // -------------------------------------------------------
-        // TARJETAS KPI
-        // -------------------------------------------------------
-        private void ConstruirTarjetasKPI()
+        // ── KPI ─────────────────────────────────────────────────
+        private void ConstruirKPIs()
         {
-            cardTotal         = CrearTarjeta("Total Órdenes",   "—", Color.FromArgb(30, 58, 95),  new Point(20, 50));
-            cardActivas       = CrearTarjeta("Activas",          "—", Color.FromArgb(33, 150, 243), new Point(185, 50));
-            cardVencidas      = CrearTarjeta("Vencidas",         "—", Color.FromArgb(244, 67, 54),  new Point(350, 50));
-            cardCumplimiento  = CrearTarjeta("Cumplimiento",     "—%",Color.FromArgb(76, 175, 80),  new Point(515, 50));
-            cardAlertas       = CrearTarjeta("Alertas",          "—", Color.FromArgb(255, 152, 0),  new Point(680, 50));
-            cardDisputa       = CrearTarjeta("En Disputa",       "—", Color.FromArgb(255, 87, 34),  new Point(845, 50));
+            panelKpis = new Panel
+            {
+                Location  = new Point(20, 70),
+                Height    = 95,
+                BackColor = Color.Transparent
+            };
 
-            panelContent.Controls.AddRange(new Control[]
+            cardTotal        = CrearCard("Total",       "—",   Color.FromArgb(15, 52, 96));
+            cardActivas      = CrearCard("Activas",      "—",   Color.FromArgb(59, 130, 246));
+            cardVencidas     = CrearCard("Vencidas",     "—",   Color.FromArgb(239, 68, 68));
+            cardCumplimiento = CrearCard("Cumplimiento", "— %", Color.FromArgb(16, 185, 129));
+            cardAlertas      = CrearCard("Alertas",      "—",   Color.FromArgb(245, 158, 11));
+            cardDisputa      = CrearCard("En Disputa",   "—",   Color.FromArgb(239, 68, 120));
+
+            panelKpis.Controls.AddRange(new Control[]
             {
                 cardTotal, cardActivas, cardVencidas,
                 cardCumplimiento, cardAlertas, cardDisputa
             });
+
+            panelContent.Controls.Add(panelKpis);
+
+            // Reposicionar cards cuando cambie el ancho
+            panelContent.Resize += (s, e) => ReposicionarCards();
+            ReposicionarCards();
         }
 
-        private Panel CrearTarjeta(string titulo, string valor, Color color, Point ubicacion)
+        private void ReposicionarCards()
+        {
+            int ancho    = (panelContent.Width - 40 - 5 * 10) / 6;
+            if (ancho < 130) ancho = 130;
+            panelKpis.Width = panelContent.Width - 40;
+
+            var cards = new[] { cardTotal, cardActivas, cardVencidas,
+                                cardCumplimiento, cardAlertas, cardDisputa };
+            for (int i = 0; i < cards.Length; i++)
+            {
+                cards[i].Width    = ancho;
+                cards[i].Location = new Point(i * (ancho + 10), 0);
+            }
+        }
+
+        private Panel CrearCard(string titulo, string valor, Color color)
         {
             var card = new Panel
             {
-                Location  = ubicacion,
-                Size      = new Size(155, 90),
+                Size      = new Size(160, 90),
                 BackColor = Color.White
             };
 
-            // Borde de color superior
-            var barraColor = new Panel
+            // Barra izquierda de color
+            var barra = new Panel
             {
-                Dock      = DockStyle.Top,
-                Height    = 5,
+                Width     = 5,
+                Dock      = DockStyle.Left,
                 BackColor = color
             };
 
             var lblValor = new Label
             {
-                Name      = "lblValor",
+                Name      = "val",
                 Text      = valor,
                 Font      = new Font("Segoe UI", 22, FontStyle.Bold),
                 ForeColor = color,
-                Location  = new Point(10, 14),
-                AutoSize  = true
+                Location  = new Point(16, 10),
+                Size      = new Size(130, 42),
+                TextAlign = ContentAlignment.MiddleLeft
             };
 
             var lblTit = new Label
             {
                 Text      = titulo,
                 Font      = new Font("Segoe UI", 8),
-                ForeColor = Color.Gray,
-                Location  = new Point(10, 58),
-                AutoSize  = true
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Location  = new Point(16, 55),
+                Size      = new Size(130, 20),
+                TextAlign = ContentAlignment.MiddleLeft
             };
 
-            card.Controls.AddRange(new Control[] { barraColor, lblValor, lblTit });
+            card.Controls.AddRange(new Control[] { barra, lblValor, lblTit });
             return card;
         }
 
-        private void ActualizarTarjeta(Panel card, string valor)
+        private void SetCardValor(Panel card, string valor)
         {
             foreach (Control c in card.Controls)
-                if (c is Label lbl && lbl.Name == "lblValor")
-                    lbl.Text = valor;
+                if (c is Label l && l.Name == "val")
+                    l.Text = valor;
         }
 
-        // -------------------------------------------------------
-        // GRID DE ÓRDENES
-        // -------------------------------------------------------
-        private void ConstruirGridOrdenes()
+        // ── Filtros ─────────────────────────────────────────────
+        private void ConstruirFiltros()
+        {
+            panelFiltros = new Panel
+            {
+                Location  = new Point(20, 175),
+                Height    = 44,
+                BackColor = Color.White
+            };
+            panelFiltros.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(Color.FromArgb(226, 232, 240)))
+                    e.Graphics.DrawRectangle(pen, 0, 0,
+                        panelFiltros.Width - 1, panelFiltros.Height - 1);
+            };
+
+            var lblIcon = new Label
+            {
+                Text     = "Buscar:",
+                Font     = new Font("Segoe UI", 9, FontStyle.Bold),
+                ForeColor= Color.FromArgb(100, 116, 139),
+                Location = new Point(10, 12),
+                AutoSize = true
+            };
+
+            txtBusqueda = new TextBox
+            {
+                Location    = new Point(70, 10),
+                Size        = new Size(200, 24),
+                Font        = new Font("Segoe UI", 9),
+                BorderStyle = BorderStyle.FixedSingle,
+                Text        = ""
+            };
+
+            btnBuscar = new Button
+            {
+                Text      = "Buscar",
+                Location  = new Point(280, 8),
+                Size      = new Size(75, 28),
+                BackColor = Color.FromArgb(15, 52, 96),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font      = new Font("Segoe UI", 9, FontStyle.Bold),
+                Cursor    = Cursors.Hand
+            };
+            btnBuscar.FlatAppearance.BorderSize = 0;
+            btnBuscar.Click += (s, e) => AplicarFiltros();
+
+            btnLimpiar = new Button
+            {
+                Text      = "Limpiar",
+                Location  = new Point(362, 8),
+                Size      = new Size(70, 28),
+                BackColor = Color.FromArgb(245, 247, 250),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                FlatStyle = FlatStyle.Flat,
+                Font      = new Font("Segoe UI", 9),
+                Cursor    = Cursors.Hand
+            };
+            btnLimpiar.FlatAppearance.BorderSize  = 1;
+            btnLimpiar.FlatAppearance.BorderColor = Color.FromArgb(226, 232, 240);
+            btnLimpiar.Click += (s, e) =>
+            {
+                txtBusqueda.Text = "";
+                CargarGridOrdenes();
+            };
+
+            lblContador = new Label
+            {
+                Text      = "",
+                Font      = new Font("Segoe UI", 8),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Location  = new Point(445, 13),
+                AutoSize  = true
+            };
+
+            panelFiltros.Controls.AddRange(new Control[]
+            { lblIcon, txtBusqueda, btnBuscar, btnLimpiar, lblContador });
+
+            txtBusqueda.KeyDown += (s, e) =>
+            { if (e.KeyCode == Keys.Enter) AplicarFiltros(); };
+
+            panelContent.Controls.Add(panelFiltros);
+
+            panelContent.Resize += (s, e) =>
+            {
+                panelFiltros.Width = panelContent.Width - 40;
+            };
+        }
+
+        // ── Grid ────────────────────────────────────────────────
+        private void ConstruirGrid()
         {
             dgvOrdenes = new DataGridView
             {
-                Location             = new Point(20, 155),
-                Anchor               = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
-                BackgroundColor      = Color.White,
-                BorderStyle          = BorderStyle.None,
+                Location                    = new Point(20, 228),
+                BackgroundColor             = Color.White,
+                BorderStyle                 = BorderStyle.None,
+                ReadOnly                    = true,
+                AllowUserToAddRows          = false,
+                AllowUserToDeleteRows       = false,
+                AllowUserToResizeRows       = false,
+                SelectionMode               = DataGridViewSelectionMode.FullRowSelect,
+                RowHeadersVisible           = false,
+                MultiSelect                 = false,
+                Font                        = new Font("Segoe UI", 9),
+                GridColor                   = Color.FromArgb(226, 232, 240),
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
-                ReadOnly             = true,
-                AllowUserToAddRows   = false,
-                AllowUserToDeleteRows= false,
-                SelectionMode        = DataGridViewSelectionMode.FullRowSelect,
-                RowHeadersVisible    = false,
-                AutoSizeColumnsMode  = DataGridViewAutoSizeColumnsMode.AllCells,
-                Font                 = new Font("Segoe UI", 9),
-                GridColor            = Color.FromArgb(230, 230, 230),
-                ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
-                {
-                    BackColor = Color.FromArgb(30, 58, 95),
-                    ForeColor = Color.White,
-                    Font      = new Font("Segoe UI", 9, FontStyle.Bold)
-                }
+                RowTemplate                 = { Height = 36 },
+                Cursor                      = Cursors.Hand,
+                AutoSizeColumnsMode         = DataGridViewAutoSizeColumnsMode.Fill
             };
-            dgvOrdenes.DefaultCellStyle.SelectionBackColor = Color.FromArgb(200, 220, 245);
-            dgvOrdenes.DefaultCellStyle.SelectionForeColor = Color.Black;
+
+            dgvOrdenes.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
+            {
+                BackColor          = Color.FromArgb(15, 52, 96),
+                ForeColor          = Color.White,
+                Font               = new Font("Segoe UI", 9, FontStyle.Bold),
+                Padding            = new Padding(8, 0, 0, 0),
+                SelectionBackColor = Color.FromArgb(15, 52, 96)
+            };
+
+            dgvOrdenes.DefaultCellStyle = new DataGridViewCellStyle
+            {
+                SelectionBackColor = Color.FromArgb(170, 233, 238),
+                SelectionForeColor = Color.FromArgb(30, 40, 55),
+                Padding            = new Padding(6, 0, 6, 0)
+            };
+
+            dgvOrdenes.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
+            {
+                BackColor          = Color.FromArgb(248, 250, 252),
+                SelectionBackColor = Color.FromArgb(170, 233, 238),
+                SelectionForeColor = Color.FromArgb(30, 40, 55)
+            };
+
             dgvOrdenes.CellDoubleClick += DgvOrdenes_CellDoubleClick;
 
-            // Calcular tamaño dinámico
             panelContent.Resize += (s, e) =>
-                dgvOrdenes.Size = new Size(panelContent.Width - 40, panelContent.Height - 180);
+            {
+                int top = dgvOrdenes.Location.Y;
+                dgvOrdenes.Width  = panelContent.Width  - 40;
+                dgvOrdenes.Height = panelContent.Height - top - 10;
+            };
 
             panelContent.Controls.Add(dgvOrdenes);
         }
 
-        // -------------------------------------------------------
-        // CARGA DE DATOS
-        // -------------------------------------------------------
+        // ═══════════════════════════════════════════════════════
+        // DATOS
+        // ═══════════════════════════════════════════════════════
         private void CargarDashboard()
         {
             try
             {
-                var kpis = _repo.ObtenerKPIs();
-                ActualizarTarjeta(cardTotal,        kpis.TotalOrdenes.ToString());
-                ActualizarTarjeta(cardActivas,       kpis.OrdenesActivas.ToString());
-                ActualizarTarjeta(cardVencidas,      kpis.OrdenesVencidas.ToString());
-                ActualizarTarjeta(cardCumplimiento,  $"{kpis.PorcentajeCumplimiento}%");
-                ActualizarTarjeta(cardAlertas,       kpis.AlertasPendientes.ToString());
-                ActualizarTarjeta(cardDisputa,       kpis.OrdenesEnDisputa.ToString());
+                var kpi = _repo.ObtenerKPIs();
+                SetCardValor(cardTotal,        kpi.TotalOrdenes.ToString());
+                SetCardValor(cardActivas,       kpi.OrdenesActivas.ToString());
+                SetCardValor(cardVencidas,      kpi.OrdenesVencidas.ToString());
+                SetCardValor(cardCumplimiento,  kpi.PorcentajeCumplimiento.ToString("0.#") + "%");
+                SetCardValor(cardAlertas,       kpi.AlertasPendientes.ToString());
+                SetCardValor(cardDisputa,       kpi.OrdenesEnDisputa.ToString());
 
                 CargarGridOrdenes();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al cargar datos:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error al cargar datos:\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void CargarGridOrdenes(int? estatusId = null, string busqueda = null)
+        private void CargarGridOrdenes(string busqueda = null)
         {
             try
             {
-                var ordenes = _repo.ObtenerOrdenes(estatusId: estatusId, numeroOrden: busqueda);
+                if (busqueda == null && txtBusqueda != null &&
+                    !string.IsNullOrWhiteSpace(txtBusqueda.Text))
+                    busqueda = txtBusqueda.Text.Trim();
+
+                var ordenes = _repo.ObtenerOrdenes(numeroOrden: busqueda);
                 dgvOrdenes.Rows.Clear();
                 dgvOrdenes.Columns.Clear();
 
-                // Definir columnas
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "NumeroOrden",     HeaderText = "# Orden",      Width = 120 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "ProveedorNombre", HeaderText = "Proveedor",    Width = 180 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "FechaEmision",    HeaderText = "Emisión",      Width = 95  });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "FechaRequerida",  HeaderText = "Requerida",    Width = 95  });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "EstatusNombre",   HeaderText = "Estatus",      Width = 130 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "Prioridad",       HeaderText = "Prioridad",    Width = 80  });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "Cumplimiento",    HeaderText = "Cumplimiento", Width = 110 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "MontoTotal",      HeaderText = "Monto (MXN)", Width = 110 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "Alertas",         HeaderText = "⚠ Alertas",   Width = 65  });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "DiasOC",          HeaderText = "Días OC",     Width = 65  });
-
-                // Guardar referencia al objeto completo en tag
-                dgvOrdenes.Tag = ordenes;
+                // Columnas con ancho proporcional
+                Columna("NumOrd",    "# Orden",       90);
+                Columna("Prov",      "Proveedor",      160);
+                Columna("FecEm",     "Emision",        82);
+                Columna("FecReq",    "Requerida",      82);
+                Columna("Estatus",   "Estatus",        110);
+                Columna("Prior",     "Prioridad",      72);
+                Columna("Cumpl",     "Cumplimiento",   105);
+                Columna("Monto",     "Monto",          125);
+                Columna("Alert",     "Alertas",        55);
+                Columna("Dias",      "Dias",           45);
 
                 foreach (var o in ordenes)
                 {
-                    int rowIdx = dgvOrdenes.Rows.Add(
+                    int idx = dgvOrdenes.Rows.Add(
                         o.NumeroOrden,
                         o.ProveedorNombre,
-                        o.FechaEmision.ToString("dd/MM/yyyy"),
-                        o.FechaRequerida.ToString("dd/MM/yyyy"),
+                        o.FechaEmision.ToString("dd/MM/yy"),
+                        o.FechaRequerida.ToString("dd/MM/yy"),
                         o.EstatusNombre,
                         o.PrioridadTexto,
                         o.Cumplimiento,
-                        o.MontoTotal.ToString("N2"),
-                        o.AlertasNoLeidas > 0 ? $"🔔 {o.AlertasNoLeidas}" : "—",
-                        o.DiasTranscurridos
+                        o.MontoTotal.ToString("N0") + " " + o.Moneda,
+                        o.AlertasNoLeidas > 0 ? o.AlertasNoLeidas.ToString() : "",
+                        o.DiasTranscurridos.ToString()
                     );
 
-                    // Colorear filas por cumplimiento/estatus
-                    var row = dgvOrdenes.Rows[rowIdx];
-                    switch (o.Cumplimiento)
+                    var row = dgvOrdenes.Rows[idx];
+                    row.Tag = o;   // la fila lleva su propia orden (sirve aunque se ordene la grilla)
+
+                    // Color fondo por cumplimiento
+                    if (o.Cumplimiento == "Vencida")
                     {
-                        case "Vencida":
-                            row.DefaultCellStyle.BackColor = Color.FromArgb(255, 235, 235); break;
-                        case "Próxima a Vencer":
-                            row.DefaultCellStyle.BackColor = Color.FromArgb(255, 248, 225); break;
-                        case "A Tiempo":
-                            row.DefaultCellStyle.BackColor = Color.FromArgb(232, 245, 233); break;
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(254, 226, 226);
+                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 200, 200);
                     }
-                    if (o.Prioridad == 1)
-                        row.Cells["Prioridad"].Style.ForeColor = Color.Red;
+                    else if (o.Cumplimiento == "Proxima a Vencer" || o.Cumplimiento == "Próxima a Vencer")
+                    {
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(254, 243, 199);
+                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 230, 160);
+                    }
+                    else if (o.Cumplimiento == "A Tiempo")
+                    {
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(209, 250, 229);
+                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(180, 240, 210);
+                    }
+
+                    // Color prioridad
+                    Color cPrior = o.Prioridad == 1
+                        ? Color.FromArgb(239, 68, 68)
+                        : o.Prioridad == 2
+                            ? Color.FromArgb(245, 158, 11)
+                            : Color.FromArgb(16, 185, 129);
+
+                    row.Cells["Prior"].Style.ForeColor = cPrior;
+                    row.Cells["Prior"].Style.Font      = new Font("Segoe UI", 9, FontStyle.Bold);
+
+                    // Color estatus
+                    if (!string.IsNullOrEmpty(o.EstatusColor))
+                    {
+                        try
+                        {
+                            row.Cells["Estatus"].Style.ForeColor =
+                                ColorTranslator.FromHtml(o.EstatusColor);
+                        }
+                        catch { }
+                    }
+
+                    // Alertas en rojo
+                    if (o.AlertasNoLeidas > 0)
+                        row.Cells["Alert"].Style.ForeColor = Color.FromArgb(239, 68, 68);
                 }
+
+                lblContador.Text = ordenes.Count + " orden(es) encontrada(s)";
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al cargar órdenes:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error al cargar ordenes:\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        // -------------------------------------------------------
-        // NAVEGACIÓN
-        // -------------------------------------------------------
-        private void MostrarDashboard()
+        private void Columna(string name, string header, int width)
         {
-            lblSeccion.Text = "Dashboard";
-            CargarDashboard();
-            dgvOrdenes.Visible = true;
-            foreach (Control c in panelContent.Controls)
-                if (c is Panel p && p != panelContent)
-                    p.Visible = (p == cardTotal || p == cardActivas || p == cardVencidas
-                                || p == cardCumplimiento || p == cardAlertas || p == cardDisputa);
+            dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name            = name,
+                HeaderText      = header,
+                Width           = width,
+                AutoSizeMode    = DataGridViewAutoSizeColumnMode.None,
+                DefaultCellStyle = new DataGridViewCellStyle
+                    { Padding = new Padding(6, 0, 6, 0) }
+            });
         }
 
-        private void MostrarListaOrdenes()
+        // ═══════════════════════════════════════════════════════
+        // NAVEGACIÓN
+        // ═══════════════════════════════════════════════════════
+        private void MostrarDashboard()
         {
-            lblSeccion.Text = "Órdenes de Compra";
+            _vista = Vista.Dashboard;
+            lblSeccion.Text   = "Dashboard";
+            lblSubtitulo.Text = "Resumen general del estado de las ordenes de compra";
+            panelKpis.Visible    = true;
+            panelFiltros.Visible = true;
+            panelFiltros.Location = new Point(20, 175);
+            dgvOrdenes.Location   = new Point(20, 228);
+            dgvOrdenes.Height     = panelContent.Height - 238;
+            CargarDashboard();
+        }
+
+        private void MostrarOrdenes()
+        {
+            _vista = Vista.Ordenes;
+            lblSeccion.Text   = "Ordenes de Compra";
+            lblSubtitulo.Text = "Gestion y seguimiento de todas las ordenes";
+            panelKpis.Visible    = false;
+            panelFiltros.Visible = true;
+            panelFiltros.Location = new Point(20, 70);
+            dgvOrdenes.Location   = new Point(20, 123);
+            dgvOrdenes.Height     = panelContent.Height - 133;
             CargarGridOrdenes();
         }
 
         private void MostrarAlertas()
         {
-            lblSeccion.Text = "Alertas del Sistema";
+            _vista = Vista.Alertas;
+            lblSeccion.Text   = "Alertas del Sistema";
+            lblSubtitulo.Text = "Notificaciones pendientes. Doble clic en una alerta para marcarla como leida";
+            panelKpis.Visible    = false;
+            panelFiltros.Visible = false;
+            dgvOrdenes.Location  = new Point(20, 70);
+            dgvOrdenes.Height    = panelContent.Height - 80;
+
             try
             {
                 var alertas = _repo.ObtenerAlertas();
                 dgvOrdenes.Rows.Clear();
                 dgvOrdenes.Columns.Clear();
 
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColNumeroOrden", HeaderText = "# Orden",  Width = 120 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColTipo",        HeaderText = "Tipo",      Width = 150 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColMensaje",     HeaderText = "Mensaje",   Width = 450 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColFecha",       HeaderText = "Fecha",     Width = 130 });
-                dgvOrdenes.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColEstado",      HeaderText = "Estado",    Width = 80  });
+                Columna("ColOrden",   "# Orden",  90);
+                Columna("ColTipo",    "Tipo",      130);
+                Columna("ColMensaje", "Mensaje",   450);
+                Columna("ColFecha",   "Fecha",     120);
+                Columna("ColEstado",  "Estado",    70);
+
+                // Rellenar columna Mensaje para que ocupe el espacio
+                dgvOrdenes.Columns["ColMensaje"].AutoSizeMode =
+                    DataGridViewAutoSizeColumnMode.Fill;
 
                 foreach (var a in alertas)
                 {
-                    int rowIdx = dgvOrdenes.Rows.Add(
+                    int idx = dgvOrdenes.Rows.Add(
                         a.NumeroOrden,
                         a.TipoAlerta,
                         a.Mensaje,
-                        a.FechaGenerada.ToString("dd/MM/yyyy HH:mm"),
-                        a.Leida ? "Leída" : "🔴 Nueva"
+                        a.FechaGenerada.ToString("dd/MM/yy HH:mm"),
+                        a.Leida ? "Leida" : "Nueva"
                     );
+                    dgvOrdenes.Rows[idx].Tag = a;
                     if (!a.Leida)
-                        dgvOrdenes.Rows[rowIdx].DefaultCellStyle.BackColor = Color.FromArgb(255, 243, 205);
+                    {
+                        dgvOrdenes.Rows[idx].DefaultCellStyle.BackColor = Color.FromArgb(254, 252, 232);
+                        dgvOrdenes.Rows[idx].Cells["ColEstado"].Style.ForeColor =
+                            Color.FromArgb(180, 83, 9);
+                        dgvOrdenes.Rows[idx].Cells["ColEstado"].Style.Font =
+                            new Font("Segoe UI", 9, FontStyle.Bold);
+                    }
                 }
+
+                lblContador.Text = alertas.Count + " alerta(s)";
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al cargar alertas:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error:\n" + ex.Message, "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        // -------------------------------------------------------
+        private void AplicarFiltros()
+        {
+            string b = txtBusqueda.Text.Trim();
+            CargarGridOrdenes(string.IsNullOrEmpty(b) ? null : b);
+        }
+
+        private void AbrirNuevaOrden()
+        {
+            var frm = new FrmNuevaOrden();
+            if (frm.ShowDialog(this) == DialogResult.OK)
+            {
+                ActivarMenu(btnOrdenes);
+                MostrarOrdenes();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
         // EVENTOS
-        // -------------------------------------------------------
+        // ═══════════════════════════════════════════════════════
         private void DgvOrdenes_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex < 0 || lblSeccion.Text != "Órdenes de Compra") return;
+            if (e.RowIndex < 0) return;
+            var tag = dgvOrdenes.Rows[e.RowIndex].Tag;
 
-            var ordenes = dgvOrdenes.Tag as List<OrdenCompra>;
-            if (ordenes == null || e.RowIndex >= ordenes.Count) return;
+            var orden = tag as OrdenCompra;
+            if (orden != null)
+            {
+                using (var frm = new FrmDetalleOrden(orden))
+                    frm.ShowDialog(this);
+                RefrescarVistaActual();
+                return;
+            }
 
-            var orden = ordenes[e.RowIndex];
-            var detalle = new FrmDetalleOrden(orden);
-            detalle.ShowDialog(this);
-            CargarDashboard(); // Refrescar tras posibles cambios
+            // Doble clic en una alerta nueva = marcarla como leida
+            var alerta = tag as Alerta;
+            if (alerta != null && !alerta.Leida)
+            {
+                try
+                {
+                    _repo.MarcarAlertaLeida(alerta.AlertaId);
+                    MostrarAlertas();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("No se pudo marcar la alerta:\n" + ex.Message,
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // Recarga solo la pantalla que el usuario esta viendo
+        private void RefrescarVistaActual()
+        {
+            switch (_vista)
+            {
+                case Vista.Alertas: MostrarAlertas();    break;
+                case Vista.Ordenes: CargarGridOrdenes(); break;
+                default:            CargarDashboard();   break;
+            }
         }
 
         private void CerrarSesion()
         {
-            if (MessageBox.Show("¿Desea cerrar la sesión?", "Confirmar",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            if (MessageBox.Show("Deseas cerrar la sesion?", "Confirmar",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            _cerrandoSesion = true;
+            timerRefresh?.Stop();
+
+            var login = Application.OpenForms.OfType<FrmLogin>().FirstOrDefault();
+            if (login != null)
             {
-                Application.OpenForms["FrmLogin"]?.Show();
-                this.Close();
+                login.Reiniciar();
+                login.Show();
             }
+            this.Close();
         }
 
-        private void FrmDashboard_FormClosing(object sender, FormClosingEventArgs e)
+        private void IniciarTimer()
         {
-            timerActualizar?.Stop();
-            Application.Exit();
-        }
-
-        private void ConfigurarTimer()
-        {
-            timerActualizar = new Timer { Interval = 60000 }; // Refrescar cada 60 segundos
-            timerActualizar.Tick += (s, e) => CargarDashboard();
-            timerActualizar.Start();
+            timerRefresh = new Timer { Interval = 60000 };
+            timerRefresh.Tick += (s, e) => RefrescarVistaActual();
+            timerRefresh.Start();
         }
     }
 }

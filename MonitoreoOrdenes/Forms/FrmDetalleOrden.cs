@@ -1,5 +1,7 @@
-using System;
+﻿using System;
 using System.Data;
+using System.Data.SqlClient;
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 using MonitoreoOrdenes.Data;
@@ -22,6 +24,20 @@ namespace MonitoreoOrdenes.Forms
         private DataGridView dgvHistorial;
         private Button btnCambiarEstatus, btnCerrar;
         private ComboBox cboNuevoEstatus;
+        private Label    lblEstatusFinal;
+
+        // Roles que pueden cambiar el estatus: 1 Administrador, 2 Comprador, 4 Supervisor.
+        // Debe coincidir con la lista IN (...) de sp_CambiarEstatusOrden (02_permisos_estatus.sql).
+        private static readonly int[] RolesQueCambianEstatus = { 1, 2, 4 };
+
+        private static bool PuedeCambiarEstatus()
+        {
+            var usuario = FrmLogin.UsuarioActual;
+            return usuario != null && Array.IndexOf(RolesQueCambianEstatus, usuario.RolId) >= 0;
+        }
+
+        /// <summary>True si se cambió el estatus; el llamador solo refresca si es necesario.</summary>
+        public bool HuboCambios { get; private set; }
 
         public FrmDetalleOrden(OrdenCompra orden)
         {
@@ -74,6 +90,16 @@ namespace MonitoreoOrdenes.Forms
                 DropDownStyle= ComboBoxStyle.DropDownList,
                 Font         = new Font("Segoe UI", 9)
             };
+            lblEstatusFinal = new Label
+            {
+                Text      = "Estatus final: esta orden ya no admite cambios.",
+                Location  = new Point(10, 540),
+                AutoSize  = true,
+                Font      = new Font("Segoe UI", 9, FontStyle.Italic),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Visible   = false
+            };
+
             CargarEstatusCombo();
 
             btnCerrar = new Button
@@ -90,7 +116,14 @@ namespace MonitoreoOrdenes.Forms
             btnCerrar.FlatAppearance.BorderSize = 0;
             btnCerrar.Click += (s, e) => this.Close();
 
-            this.Controls.AddRange(new Control[] { btnCambiarEstatus, cboNuevoEstatus, btnCerrar });
+            this.Controls.AddRange(new Control[] { btnCambiarEstatus, cboNuevoEstatus, lblEstatusFinal, btnCerrar });
+
+            // Sin permiso: solo consulta (no se muestran los controles de cambio)
+            if (!PuedeCambiarEstatus())
+            {
+                btnCambiarEstatus.Visible = false;
+                cboNuevoEstatus.Visible   = false;
+            }
 
             // Tab Historial
             dgvHistorial = new DataGridView
@@ -154,7 +187,12 @@ namespace MonitoreoOrdenes.Forms
                     dgvHistorial.Columns["comentario"].HeaderText        = "Comentario";
                 }
             }
-            catch { /* El historial es opcional */ }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudo cargar el historial: " + ex);
+                MessageBox.Show("No se pudo cargar el historial de estatus.\n\n" + ex.Message,
+                    "Historial", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void AgregarCampo(Control parent, string etiqueta, string valor, ref int y, string colorHex = null)
@@ -179,33 +217,61 @@ namespace MonitoreoOrdenes.Forms
             y += 28;
         }
 
+        // Muestra solo los estatus a los que se puede pasar desde el actual
+        // (tabla EstatusTransiciones, ver 03_transiciones_estatus.sql).
         private void CargarEstatusCombo()
         {
             try
             {
                 var dt = DatabaseHelper.ExecuteQuery(
-                    "SELECT estatus_id, nombre FROM EstatusOrden ORDER BY estatus_id");
+                    @"SELECT e.estatus_id, e.nombre
+                      FROM EstatusTransiciones t
+                      INNER JOIN EstatusOrden e ON e.estatus_id = t.estatus_destino_id
+                      WHERE t.estatus_origen_id = @origen
+                      ORDER BY e.estatus_id",
+                    new[] { new SqlParameter("@origen", _orden.EstatusId) });
+
                 cboNuevoEstatus.DataSource    = dt;
                 cboNuevoEstatus.DisplayMember = "nombre";
                 cboNuevoEstatus.ValueMember   = "estatus_id";
 
-                // Seleccionar estatus actual
-                foreach (DataRowView item in cboNuevoEstatus.Items)
-                    if (Convert.ToInt32(item["estatus_id"]) == _orden.EstatusId)
-                    {
-                        cboNuevoEstatus.SelectedItem = item;
-                        break;
-                    }
+                bool puede       = PuedeCambiarEstatus();
+                bool hayOpciones = dt.Rows.Count > 0;
+
+                cboNuevoEstatus.Visible    = puede && hayOpciones;
+                btnCambiarEstatus.Visible  = puede && hayOpciones;
+                btnCambiarEstatus.Enabled  = true;
+                lblEstatusFinal.Visible    = puede && !hayOpciones;
             }
-            catch { /* Continuar sin combo */ }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudo cargar el catálogo de estatus: " + ex);
+                btnCambiarEstatus.Enabled = false;   // sin catálogo no se puede cambiar el estatus
+                MessageBox.Show("No se pudo cargar los estatus disponibles.\n\n" + ex.Message,
+                    "Estatus", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void BtnCambiarEstatus_Click(object sender, EventArgs e)
         {
+            if (!PuedeCambiarEstatus())
+            {
+                MessageBox.Show("Su rol no tiene permiso para cambiar el estatus de una orden.",
+                    "Sin permiso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             if (cboNuevoEstatus.SelectedItem == null) return;
 
-            var row        = ((DataRowView)cboNuevoEstatus.SelectedItem).Row;
-            int nuevoId    = Convert.ToInt32(row["estatus_id"]);
+            if (FrmLogin.UsuarioActual == null)
+            {
+                MessageBox.Show("La sesión expiró. Vuelva a iniciar sesión.", "Sesión",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var row            = ((DataRowView)cboNuevoEstatus.SelectedItem).Row;
+            int nuevoId        = Convert.ToInt32(row["estatus_id"]);
             string nuevoNombre = row["nombre"].ToString();
 
             if (nuevoId == _orden.EstatusId)
@@ -215,29 +281,89 @@ namespace MonitoreoOrdenes.Forms
                 return;
             }
 
-            string comentario = Microsoft.VisualBasic.Interaction.InputBox(
-                $"Ingrese comentario para el cambio:\n{_orden.EstatusNombre} → {nuevoNombre}",
-                "Cambio de Estatus", "");
+            // Un solo paso: el diálogo confirma y captura el comentario. Cancelar aborta.
+            string comentario;
+            if (!PedirComentario(this, $"{_orden.EstatusNombre} → {nuevoNombre}", out comentario))
+                return;
 
-            if (MessageBox.Show(
-                $"¿Cambiar estatus a '{nuevoNombre}'?",
-                "Confirmar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            try
             {
-                try
+                _repo.CambiarEstatus(_orden.OrdenId, nuevoId,
+                                     FrmLogin.UsuarioActual.UsuarioId, comentario);
+
+                _orden.EstatusId     = nuevoId;
+                _orden.EstatusNombre = nuevoNombre;
+                HuboCambios          = true;
+                CargarDatos();
+                CargarEstatusCombo();
+
+                MessageBox.Show("Estatus actualizado correctamente.", "Éxito",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("Error al cambiar estatus: " + ex);
+                MessageBox.Show("No se pudo cambiar el estatus.\n\n" + ex.Message, "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Diálogo de confirmación con comentario opcional.
+        /// Devuelve false si el usuario cancela (a diferencia de InputBox, que
+        /// devuelve "" tanto al cancelar como al dejar el campo vacío).
+        /// </summary>
+        private static bool PedirComentario(IWin32Window owner, string detalle, out string comentario)
+        {
+            comentario = null;
+
+            using (var dlg = new Form())
+            {
+                dlg.Text            = "Cambio de Estatus";
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition   = FormStartPosition.CenterParent;
+                dlg.MaximizeBox     = false;
+                dlg.MinimizeBox     = false;
+                dlg.ShowInTaskbar   = false;
+                dlg.ClientSize      = new Size(420, 200);
+
+                var lbl = new Label
                 {
-                    _repo.CambiarEstatus(_orden.OrdenId, nuevoId,
-                                         FrmLogin.UsuarioActual.UsuarioId, comentario);
-                    MessageBox.Show("Estatus actualizado correctamente.", "Éxito",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    _orden.EstatusId    = nuevoId;
-                    _orden.EstatusNombre= nuevoNombre;
-                    CargarDatos();
-                }
-                catch (Exception ex)
+                    Text     = "¿Confirmar el cambio de estatus?\n" + detalle + "\n\nComentario (opcional):",
+                    Location = new Point(12, 10),
+                    Size     = new Size(396, 62)
+                };
+                var txt = new TextBox
                 {
-                    MessageBox.Show($"Error: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                    Location   = new Point(12, 76),
+                    Size       = new Size(396, 70),
+                    Multiline  = true,
+                    ScrollBars = ScrollBars.Vertical
+                };
+                var ok = new Button
+                {
+                    Text         = "Cambiar",
+                    DialogResult = DialogResult.OK,
+                    Location     = new Point(232, 160),
+                    Size         = new Size(85, 28)
+                };
+                var cancel = new Button
+                {
+                    Text         = "Cancelar",
+                    DialogResult = DialogResult.Cancel,
+                    Location     = new Point(323, 160),
+                    Size         = new Size(85, 28)
+                };
+
+                dlg.Controls.AddRange(new Control[] { lbl, txt, ok, cancel });
+                dlg.AcceptButton = ok;
+                dlg.CancelButton = cancel;
+
+                if (dlg.ShowDialog(owner) != DialogResult.OK)
+                    return false;
+
+                comentario = string.IsNullOrWhiteSpace(txt.Text) ? null : txt.Text.Trim();
+                return true;
             }
         }
     }

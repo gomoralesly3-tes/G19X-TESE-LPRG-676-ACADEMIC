@@ -1,7 +1,8 @@
 using System;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
-using System.Configuration;
+using System.Diagnostics;
 
 namespace MonitoreoOrdenes.Data
 {
@@ -11,18 +12,63 @@ namespace MonitoreoOrdenes.Data
     /// </summary>
     public static class DatabaseHelper
     {
-        // Lee la conexión desde App.config → connectionStrings → "MonitoreoDB"
-        private static readonly string _connectionString =
-            ConfigurationManager.ConnectionStrings["MonitoreoDB"].ConnectionString;
+        private const string ConnectionName = "MonitoreoDB";
+        private const int CommandTimeoutSeconds = 30;
+
+        // Se lee de forma diferida: si falta en App.config el error ocurre al usarla
+        // (dentro del try/catch de quien llama) y no al cargar la clase, que haría
+        // caer la aplicación con TypeInitializationException sin mensaje útil.
+        private static string ConnectionString
+        {
+            get
+            {
+                var settings = ConfigurationManager.ConnectionStrings[ConnectionName];
+                if (settings == null || string.IsNullOrWhiteSpace(settings.ConnectionString))
+                    throw new ConfigurationErrorsException(
+                        $"No se encontró la cadena de conexión '{ConnectionName}' en App.config.");
+                return settings.ConnectionString;
+            }
+        }
 
         /// <summary>
         /// Devuelve una nueva conexión abierta. El llamador es responsable de cerrarla (using).
         /// </summary>
         public static SqlConnection GetConnection()
         {
-            var connection = new SqlConnection(_connectionString);
-            connection.Open();
-            return connection;
+            var connection = new SqlConnection(ConnectionString);
+            try
+            {
+                connection.Open();
+                return connection;
+            }
+            catch
+            {
+                connection.Dispose();
+                throw;
+            }
+        }
+
+        private static SqlCommand CrearComando(SqlConnection conn, string texto,
+                                               CommandType tipo, SqlParameter[] parameters)
+        {
+            var cmd = new SqlCommand(texto, conn)
+            {
+                CommandType    = tipo,
+                CommandTimeout = CommandTimeoutSeconds
+            };
+            if (parameters != null)
+                cmd.Parameters.AddRange(parameters);
+            return cmd;
+        }
+
+        private static DataTable Llenar(string texto, CommandType tipo, SqlParameter[] parameters)
+        {
+            var dt = new DataTable();
+            using (var conn = GetConnection())
+            using (var cmd = CrearComando(conn, texto, tipo, parameters))
+            using (var adapter = new SqlDataAdapter(cmd))
+                adapter.Fill(dt);
+            return dt;
         }
 
         /// <summary>
@@ -30,20 +76,7 @@ namespace MonitoreoOrdenes.Data
         /// </summary>
         public static DataTable ExecuteProcedure(string procedureName, SqlParameter[] parameters = null)
         {
-            var dt = new DataTable();
-            using (var conn = GetConnection())
-            using (var cmd = new SqlCommand(procedureName, conn))
-            {
-                cmd.CommandType = CommandType.StoredProcedure;
-                cmd.CommandTimeout = 30;
-
-                if (parameters != null)
-                    cmd.Parameters.AddRange(parameters);
-
-                using (var adapter = new SqlDataAdapter(cmd))
-                    adapter.Fill(dt);
-            }
-            return dt;
+            return Llenar(procedureName, CommandType.StoredProcedure, parameters);
         }
 
         /// <summary>
@@ -53,16 +86,8 @@ namespace MonitoreoOrdenes.Data
         public static int ExecuteNonQuery(string procedureName, SqlParameter[] parameters = null)
         {
             using (var conn = GetConnection())
-            using (var cmd = new SqlCommand(procedureName, conn))
-            {
-                cmd.CommandType = CommandType.StoredProcedure;
-                cmd.CommandTimeout = 30;
-
-                if (parameters != null)
-                    cmd.Parameters.AddRange(parameters);
-
+            using (var cmd = CrearComando(conn, procedureName, CommandType.StoredProcedure, parameters))
                 return cmd.ExecuteNonQuery();
-            }
         }
 
         /// <summary>
@@ -71,19 +96,18 @@ namespace MonitoreoOrdenes.Data
         /// </summary>
         public static DataTable ExecuteQuery(string sql, SqlParameter[] parameters = null)
         {
-            var dt = new DataTable();
+            return Llenar(sql, CommandType.Text, parameters);
+        }
+
+        /// <summary>
+        /// Ejecuta una sentencia SQL directa que no devuelve resultados (UPDATE/INSERT/DELETE).
+        /// Retorna el número de filas afectadas.
+        /// </summary>
+        public static int ExecuteNonQueryText(string sql, SqlParameter[] parameters = null)
+        {
             using (var conn = GetConnection())
-            using (var cmd = new SqlCommand(sql, conn))
-            {
-                cmd.CommandTimeout = 30;
-
-                if (parameters != null)
-                    cmd.Parameters.AddRange(parameters);
-
-                using (var adapter = new SqlDataAdapter(cmd))
-                    adapter.Fill(dt);
-            }
-            return dt;
+            using (var cmd = CrearComando(conn, sql, CommandType.Text, parameters))
+                return cmd.ExecuteNonQuery();
         }
 
         /// <summary>
@@ -91,13 +115,27 @@ namespace MonitoreoOrdenes.Data
         /// </summary>
         public static bool TestConnection()
         {
+            string error;
+            return TestConnection(out error);
+        }
+
+        /// <summary>
+        /// Igual que TestConnection(), pero devuelve el motivo del fallo.
+        /// </summary>
+        public static bool TestConnection(out string error)
+        {
             try
             {
                 using (var conn = GetConnection())
+                {
+                    error = null;
                     return conn.State == ConnectionState.Open;
+                }
             }
-            catch
+            catch (Exception ex)
             {
+                Trace.TraceError("TestConnection falló: " + ex);
+                error = ex.Message;
                 return false;
             }
         }

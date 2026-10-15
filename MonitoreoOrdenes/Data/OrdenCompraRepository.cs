@@ -105,7 +105,7 @@ namespace MonitoreoOrdenes.Data
         public void MarcarAlertaLeida(int alertaId)
         {
             string sql = "UPDATE Alertas SET leida = 1, fecha_leida = GETDATE() WHERE alerta_id = @id";
-            DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@id", alertaId) });
+            DatabaseHelper.ExecuteNonQueryText(sql, new[] { new SqlParameter("@id", alertaId) });
         }
 
         /// <summary>
@@ -145,6 +145,12 @@ namespace MonitoreoOrdenes.Data
             return DatabaseHelper.ExecuteQuery(sql, new[] { new SqlParameter("@orden_id", ordenId) });
         }
 
+        // DBNull.Value no es null, así que "?." no sirve para columnas NULL de SQL.
+        private static string TextoONull(object valor)
+        {
+            return valor == null || valor == DBNull.Value ? null : valor.ToString();
+        }
+
         // -------------------------------------------------------
         // Mapeo interno DataTable → List<OrdenCompra>
         // -------------------------------------------------------
@@ -164,14 +170,14 @@ namespace MonitoreoOrdenes.Data
                     Moneda               = row["moneda"].ToString(),
                     Prioridad            = Convert.ToInt32(row["prioridad"]),
                     PrioridadTexto       = row["prioridad_texto"].ToString(),
-                    Observaciones        = row["observaciones"]?.ToString(),
+                    Observaciones        = TextoONull(row["observaciones"]),
                     ProveedorId          = Convert.ToInt32(row["proveedor_id"]),
                     ProveedorCodigo      = row["proveedor_codigo"].ToString(),
                     ProveedorNombre      = row["proveedor_nombre"].ToString(),
                     ProveedorCalificacion= row["proveedor_calificacion"] == DBNull.Value ? (decimal?)null : Convert.ToDecimal(row["proveedor_calificacion"]),
                     EstatusId            = Convert.ToInt32(row["estatus_id"]),
                     EstatusNombre        = row["estatus_nombre"].ToString(),
-                    EstatusColor         = row["estatus_color"]?.ToString(),
+                    EstatusColor         = TextoONull(row["estatus_color"]),
                     CreadorId            = Convert.ToInt32(row["creador_id"]),
                     CreadorNombre        = row["creador_nombre"].ToString(),
                     DiasTranscurridos    = Convert.ToInt32(row["dias_transcurridos"]),
