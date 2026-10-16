@@ -131,12 +131,25 @@ BEGIN
 CREATE TABLE [dbo].[EstatusTransiciones](
 	[estatus_origen_id] [int] NOT NULL,
 	[estatus_destino_id] [int] NOT NULL,
+	[accion] [varchar](60) NULL,
  CONSTRAINT [PK_EstatusTransiciones] PRIMARY KEY CLUSTERED 
 (
 	[estatus_origen_id] ASC,
 	[estatus_destino_id] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
+END
+GO
+/****** Object:  Table [dbo].[EstatusTransicionRoles] ******/
+IF OBJECT_ID(N'dbo.EstatusTransicionRoles') IS NULL
+BEGIN
+    CREATE TABLE dbo.EstatusTransicionRoles
+    (
+        estatus_origen_id  INT NOT NULL,
+        estatus_destino_id INT NOT NULL,
+        rol_id             INT NOT NULL,
+        CONSTRAINT PK_EstatusTransicionRoles PRIMARY KEY (estatus_origen_id, estatus_destino_id, rol_id)
+    );
 END
 GO
 /****** Object:  Table [dbo].[HistorialEstatusOrden] ******/

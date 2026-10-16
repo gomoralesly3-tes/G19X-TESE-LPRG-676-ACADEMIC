@@ -36,6 +36,7 @@ namespace MonitoreoOrdenes.Forms
         // Datos
         private DataTable _dtProductos;
         private DataTable _dtProveedores;
+        private int        _proveedorActualId;   // proveedor cuyos productos estan cargados en la grilla
 
         // Roles que pueden crear ordenes: 1 Administrador, 2 Comprador.
         // Debe coincidir con sp_CrearOrdenCompra (la base de datos tambien lo valida).
@@ -125,6 +126,7 @@ namespace MonitoreoOrdenes.Forms
                 Font          = new Font("Segoe UI", 9),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
+            cboProveedor.SelectionChangeCommitted += CboProveedor_SelectionChangeCommitted;
             panelForm.Controls.Add(cboProveedor);
 
             // Fecha requerida
@@ -377,18 +379,75 @@ namespace MonitoreoOrdenes.Forms
                 cboProveedor.DisplayMember = "nombre";
                 cboProveedor.ValueMember   = "proveedor_id";
 
-                // Productos para el combo del grid
-                _dtProductos = DatabaseHelper.ExecuteQuery(
-                    "SELECT producto_id, nombre, unidad_medida, precio_ref FROM Productos WHERE activo=1 ORDER BY nombre");
-
-                var col = (DataGridViewComboBoxColumn)dgvProductos.Columns["Producto"];
-                col.DataSource    = _dtProductos;
-                col.DisplayMember = "nombre";
-                col.ValueMember   = "producto_id";
+                // Productos del proveedor seleccionado (cada proveedor vende los suyos)
+                CargarProductosDelProveedor();
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Error al cargar catalogos:\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Carga en el combo de la grilla SOLO los productos que vende el proveedor elegido,
+        // con el precio pactado con ese proveedor (tabla ProveedorProductos).
+        private void CargarProductosDelProveedor()
+        {
+            if (cboProveedor.SelectedItem == null) return;
+
+            int proveedorId = Convert.ToInt32(((DataRowView)cboProveedor.SelectedItem)["proveedor_id"]);
+
+            _dtProductos = DatabaseHelper.ExecuteQuery(
+                @"SELECT p.producto_id, p.nombre, p.unidad_medida, pp.precio_pactado
+                  FROM ProveedorProductos pp
+                  INNER JOIN Productos p ON p.producto_id = pp.producto_id
+                  WHERE pp.proveedor_id = @prov
+                    AND pp.activo = 1
+                    AND p.activo  = 1
+                  ORDER BY p.nombre",
+                new[] { new SqlParameter("@prov", proveedorId) });
+
+            var col = (DataGridViewComboBoxColumn)dgvProductos.Columns["Producto"];
+            col.DataSource    = _dtProductos;
+            col.DisplayMember = "nombre";
+            col.ValueMember   = "producto_id";
+
+            _proveedorActualId = proveedorId;
+        }
+
+        // El usuario eligio otro proveedor: sus productos son distintos
+        private void CboProveedor_SelectionChangeCommitted(object sender, EventArgs e)
+        {
+            if (cboProveedor.SelectedItem == null) return;
+
+            int nuevoId = Convert.ToInt32(((DataRowView)cboProveedor.SelectedItem)["proveedor_id"]);
+            if (nuevoId == _proveedorActualId) return;
+
+            if (dgvProductos.Rows.Count > 0)
+            {
+                var respuesta = MessageBox.Show(
+                    "Cada proveedor ofrece sus propios productos.\n" +
+                    "Al cambiar de proveedor se quitarán las líneas actuales.\n\n¿Continuar?",
+                    "Cambiar proveedor", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                if (respuesta != DialogResult.Yes)
+                {
+                    cboProveedor.SelectedValue = _proveedorActualId;   // deja el proveedor anterior
+                    return;
+                }
+
+                dgvProductos.Rows.Clear();
+                CalcularTotal();
+            }
+
+            try
+            {
+                CargarProductosDelProveedor();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudieron cargar los productos del proveedor: " + ex);
+                MessageBox.Show("No se pudieron cargar los productos del proveedor.\n\n" + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -398,6 +457,13 @@ namespace MonitoreoOrdenes.Forms
         // ═══════════════════════════════════════════════════════
         private void BtnAgregarLinea_Click(object sender, EventArgs e)
         {
+            if (_dtProductos == null || _dtProductos.Rows.Count == 0)
+            {
+                Aviso("Este proveedor no tiene productos asignados. " +
+                      "Pide que se registren en ProveedorProductos o elige otro proveedor.");
+                return;
+            }
+
             int idx = dgvProductos.Rows.Add();
             dgvProductos.Rows[idx].Cells["Cantidad"].Value        = "1";
             dgvProductos.Rows[idx].Cells["PrecioUnitario"].Value  = "0.00";
@@ -423,7 +489,7 @@ namespace MonitoreoOrdenes.Forms
 
             var row = dgvProductos.Rows[e.RowIndex];
 
-            // Si cambia el producto, cargar precio de referencia
+            // Si cambia el producto, cargar el precio pactado con el proveedor
             if (dgvProductos.Columns[e.ColumnIndex].Name == "Producto")
             {
                 var prodId = row.Cells["Producto"].Value;
@@ -434,8 +500,8 @@ namespace MonitoreoOrdenes.Forms
                         if (dr["producto_id"].ToString() == prodId.ToString())
                         {
                             row.Cells["PrecioUnitario"].Value =
-                                dr["precio_ref"] != DBNull.Value
-                                ? Convert.ToDecimal(dr["precio_ref"]).ToString("F2")
+                                dr["precio_pactado"] != DBNull.Value
+                                ? Convert.ToDecimal(dr["precio_pactado"]).ToString("F2")
                                 : "0.00";
                             row.Cells["Unidad"].Value = dr["unidad_medida"].ToString();
                             break;

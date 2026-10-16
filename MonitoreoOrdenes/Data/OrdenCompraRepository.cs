@@ -1,13 +1,25 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using MonitoreoOrdenes.Forms;
 using MonitoreoOrdenes.Models;
 
 namespace MonitoreoOrdenes.Data
 {
     public class OrdenCompraRepository
     {
+        // Usuario que consulta. La base de datos usa este dato para que un Comprador
+        // (rol 2) solo reciba sus propias ordenes, KPIs y alertas.
+        private static object UsuarioActualId
+        {
+            get
+            {
+                var usuario = FrmLogin.UsuarioActual;
+                return usuario == null ? (object)DBNull.Value : usuario.UsuarioId;
+            }
+        }
+
         /// <summary>
         /// Obtiene órdenes de compra con filtros opcionales vía sp_ObtenerOrdenesCompra.
         /// </summary>
@@ -26,7 +38,8 @@ namespace MonitoreoOrdenes.Data
                 new SqlParameter("@prioridad",    (object)prioridad   ?? DBNull.Value),
                 new SqlParameter("@fecha_desde",  (object)desde       ?? DBNull.Value),
                 new SqlParameter("@fecha_hasta",  (object)hasta       ?? DBNull.Value),
-                new SqlParameter("@numero_orden", (object)numeroOrden ?? DBNull.Value)
+                new SqlParameter("@numero_orden", (object)numeroOrden ?? DBNull.Value),
+                new SqlParameter("@usuario_id",   UsuarioActualId)
             };
 
             var dt = DatabaseHelper.ExecuteProcedure("sp_ObtenerOrdenesCompra", parameters);
@@ -38,7 +51,8 @@ namespace MonitoreoOrdenes.Data
         /// </summary>
         public KpiDashboard ObtenerKPIs()
         {
-            var dt = DatabaseHelper.ExecuteQuery("SELECT * FROM vw_KPIs_Dashboard");
+            var dt = DatabaseHelper.ExecuteProcedure("sp_ObtenerKpisDashboard",
+                new[] { new SqlParameter("@usuario_id", UsuarioActualId) });
 
             if (dt.Rows.Count == 0)
                 return new KpiDashboard();
@@ -65,22 +79,11 @@ namespace MonitoreoOrdenes.Data
         /// </summary>
         public List<Alerta> ObtenerAlertas(bool soloNoLeidas = true)
         {
-            string sql = @"
-                SELECT a.alerta_id, a.orden_id, oc.numero_orden,
-                       ta.nombre AS tipo_alerta, a.mensaje,
-                       a.fecha_generada, a.leida
-                FROM Alertas a
-                INNER JOIN OrdenesCompra oc ON a.orden_id = oc.orden_id
-                INNER JOIN TiposAlerta ta   ON a.tipo_alerta_id = ta.tipo_alerta_id
-                WHERE (@soloNoLeidas = 0 OR a.leida = 0)
-                ORDER BY a.fecha_generada DESC";
-
-            var parameters = new[]
+            var dt = DatabaseHelper.ExecuteProcedure("sp_ObtenerAlertas", new[]
             {
-                new SqlParameter("@soloNoLeidas", soloNoLeidas ? 1 : 0)
-            };
-
-            var dt = DatabaseHelper.ExecuteQuery(sql, parameters);
+                new SqlParameter("@solo_no_leidas", soloNoLeidas),
+                new SqlParameter("@usuario_id",     UsuarioActualId)
+            });
             var lista = new List<Alerta>();
 
             foreach (DataRow row in dt.Rows)

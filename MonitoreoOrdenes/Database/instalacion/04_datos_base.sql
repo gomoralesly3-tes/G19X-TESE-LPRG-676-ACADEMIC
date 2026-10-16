@@ -3,7 +3,7 @@
 -- Ejecutar DESPUES de 01_esquema.sql, 02_vistas.sql y 03_procedimientos.sql.
 -- Se puede repetir: solo inserta lo que no existe.
 --
--- Incluye: Roles, EstatusOrden, EstatusTransiciones, TiposAlerta,
+-- Incluye: Roles, EstatusOrden, EstatusTransiciones, EstatusTransicionRoles, TiposAlerta,
 -- TiposIncidencia y Categorias.
 -- sp_GenerarAlertas usa tipo_alerta_id 1 (Proxima a Vencer), 2 (Vencida)
 -- y 6 (Incidencia Abierta): no cambiar esos numeros.
@@ -43,28 +43,60 @@ FROM (VALUES
     ( 7, 'Recibida Completa', 'Todos los materiales recibidos',          '#4CAF50'),
     ( 8, 'Cancelada',         'Orden cancelada',                         '#F44336'),
     ( 9, 'En Disputa',        'Existe una incidencia sin resolver',      '#FF5722'),
-    (10, 'Cerrada',           'Orden cerrada y conciliada',              '#607D8B')
+    (10, 'Cerrada',           'Orden cerrada y conciliada',              '#607D8B'),
+    (11, 'Pendiente de Aprobación', 'Orden enviada a aprobación del supervisor', '#FFC107')
 ) AS v(id, nombre, descr, color)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.EstatusOrden e WHERE e.estatus_id = v.id);
 SET IDENTITY_INSERT dbo.EstatusOrden OFF;
 GO
 
--- ── Cambios de estatus permitidos ───────────────────────────
--- 8 Cancelada y 10 Cerrada son finales (no tienen salida).
-INSERT INTO dbo.EstatusTransiciones (estatus_origen_id, estatus_destino_id)
-SELECT v.o, v.d
+-- ── Flujo de estatus ────────────────────────────────────────
+--   1 Borrador -> 11 Pendiente de Aprobación -> 2 Enviada -> ...
+--   8 Cancelada y 10 Cerrada son finales (no tienen salida).
+INSERT INTO dbo.EstatusTransiciones (estatus_origen_id, estatus_destino_id, accion)
+SELECT v.o, v.d, v.accion
 FROM (VALUES
-    (1,2),(1,8),
-    (2,3),(2,8),(2,9),
-    (3,4),(3,8),(3,9),
-    (4,5),(4,8),(4,9),
-    (5,6),(5,7),(5,9),
-    (6,7),(6,9),
-    (7,10),(7,9),
-    (9,3),(9,4),(9,5),(9,6),(9,7),(9,8)
-) AS v(o, d)
+    (1,11,'Enviar a aprobación'),(1,8,NULL),
+    (11,2,'Aprobar y enviar al proveedor'),(11,1,'Devolver a Borrador'),(11,8,NULL),
+    (2,3,NULL),(2,8,NULL),(2,9,NULL),
+    (3,4,NULL),(3,8,NULL),(3,9,NULL),
+    (4,5,NULL),(4,8,NULL),(4,9,NULL),
+    (5,6,NULL),(5,7,NULL),(5,9,NULL),
+    (6,7,NULL),(6,9,NULL),
+    (7,10,NULL),(7,9,NULL),
+    (9,3,NULL),(9,4,NULL),(9,5,NULL),(9,6,NULL),(9,7,NULL),(9,8,NULL)
+) AS v(o, d, accion)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.EstatusTransiciones t
                   WHERE t.estatus_origen_id = v.o AND t.estatus_destino_id = v.d);
+GO
+
+-- ── Quien puede hacer cada cambio ───────────────────────────
+-- Desde "Enviada" en adelante (2,3,4,5,6,7,9): Administrador, Comprador,
+-- Almacén y Supervisor. Consulta (5) nunca cambia estatus.
+INSERT INTO dbo.EstatusTransicionRoles (estatus_origen_id, estatus_destino_id, rol_id)
+SELECT t.estatus_origen_id, t.estatus_destino_id, r.rol_id
+FROM dbo.EstatusTransiciones t
+CROSS JOIN (VALUES (1),(2),(3),(4)) AS r(rol_id)
+WHERE t.estatus_origen_id IN (2,3,4,5,6,7,9)
+  AND NOT EXISTS (SELECT 1 FROM dbo.EstatusTransicionRoles x
+                  WHERE x.estatus_origen_id  = t.estatus_origen_id
+                    AND x.estatus_destino_id = t.estatus_destino_id
+                    AND x.rol_id             = r.rol_id);
+
+-- Antes de enviarse: el Comprador prepara; el Supervisor aprueba.
+INSERT INTO dbo.EstatusTransicionRoles (estatus_origen_id, estatus_destino_id, rol_id)
+SELECT v.o, v.d, v.r
+FROM (VALUES
+    (1,11,1),(1,11,2),
+    (1, 8,1),(1, 8,2),
+    (11,2,1),(11,2,4),
+    (11,1,1),(11,1,2),(11,1,4),
+    (11,8,1),(11,8,4)
+) AS v(o, d, r)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.EstatusTransicionRoles x
+                  WHERE x.estatus_origen_id  = v.o
+                    AND x.estatus_destino_id = v.d
+                    AND x.rol_id             = v.r);
 GO
 
 -- ── Tipos de alerta ─────────────────────────────────────────

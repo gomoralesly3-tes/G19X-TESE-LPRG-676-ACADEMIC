@@ -1,6 +1,13 @@
 ﻿-- ============================================================
 -- 04_crear_orden.sql  (migracion para la base de datos existente)
 -- Ejecutar ANTES de instalar la nueva FrmNuevaOrden.cs.
+--
+-- Si ya habias ejecutado una version anterior de este script SIN la linea
+-- USE, primero limpia lo que quedo en "master" (ver README o el mensaje).
+-- ============================================================
+USE [MonitoreoOrdenesCompra]
+GO
+-- ============================================================
 -- ============================================================
 -- Crear orden de compra de forma segura
 --   * Solo roles 1 (Administrador) y 2 (Comprador) pueden crear ordenes.

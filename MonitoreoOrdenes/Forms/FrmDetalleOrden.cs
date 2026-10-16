@@ -26,9 +26,10 @@ namespace MonitoreoOrdenes.Forms
         private ComboBox cboNuevoEstatus;
         private Label    lblEstatusFinal;
 
-        // Roles que pueden cambiar el estatus: 1 Administrador, 2 Comprador, 4 Supervisor.
-        // Debe coincidir con la lista IN (...) de sp_CambiarEstatusOrden (02_permisos_estatus.sql).
-        private static readonly int[] RolesQueCambianEstatus = { 1, 2, 4 };
+        // Roles que pueden cambiar estatus alguna vez: 1 Administrador, 2 Comprador,
+        // 3 Almacén, 4 Supervisor. QUE cambios concretos puede hacer cada rol lo define
+        // la tabla EstatusTransicionRoles y lo valida sp_CambiarEstatusOrden.
+        private static readonly int[] RolesQueCambianEstatus = { 1, 2, 3, 4 };
 
         private static bool PuedeCambiarEstatus()
         {
@@ -92,7 +93,7 @@ namespace MonitoreoOrdenes.Forms
             };
             lblEstatusFinal = new Label
             {
-                Text      = "Estatus final: esta orden ya no admite cambios.",
+                Text      = "No hay cambios de estatus disponibles para esta orden con su rol.",
                 Location  = new Point(10, 540),
                 AutoSize  = true,
                 Font      = new Font("Segoe UI", 9, FontStyle.Italic),
@@ -218,18 +219,33 @@ namespace MonitoreoOrdenes.Forms
         }
 
         // Muestra solo los estatus a los que se puede pasar desde el actual
-        // (tabla EstatusTransiciones, ver 03_transiciones_estatus.sql).
+        // (tablas EstatusTransiciones y EstatusTransicionRoles).
         private void CargarEstatusCombo()
         {
             try
             {
+                int rolId = FrmLogin.UsuarioActual != null ? FrmLogin.UsuarioActual.RolId : 0;
+
+                // Solo los cambios validos desde el estatus actual Y permitidos para el rol.
+                // "nombre" es lo que se muestra (la accion, p. ej. "Aprobar y enviar al
+                // proveedor"); "estatus_nombre" es el nombre real del estatus destino.
                 var dt = DatabaseHelper.ExecuteQuery(
-                    @"SELECT e.estatus_id, e.nombre
+                    @"SELECT e.estatus_id,
+                             e.nombre AS estatus_nombre,
+                             COALESCE(t.accion, e.nombre) AS nombre
                       FROM EstatusTransiciones t
+                      INNER JOIN EstatusTransicionRoles r
+                              ON r.estatus_origen_id  = t.estatus_origen_id
+                             AND r.estatus_destino_id = t.estatus_destino_id
                       INNER JOIN EstatusOrden e ON e.estatus_id = t.estatus_destino_id
                       WHERE t.estatus_origen_id = @origen
+                        AND r.rol_id            = @rol
                       ORDER BY e.estatus_id",
-                    new[] { new SqlParameter("@origen", _orden.EstatusId) });
+                    new[]
+                    {
+                        new SqlParameter("@origen", _orden.EstatusId),
+                        new SqlParameter("@rol",    rolId)
+                    });
 
                 cboNuevoEstatus.DataSource    = dt;
                 cboNuevoEstatus.DisplayMember = "nombre";
@@ -272,7 +288,7 @@ namespace MonitoreoOrdenes.Forms
 
             var row            = ((DataRowView)cboNuevoEstatus.SelectedItem).Row;
             int nuevoId        = Convert.ToInt32(row["estatus_id"]);
-            string nuevoNombre = row["nombre"].ToString();
+            string nuevoNombre = row["estatus_nombre"].ToString();
 
             if (nuevoId == _orden.EstatusId)
             {

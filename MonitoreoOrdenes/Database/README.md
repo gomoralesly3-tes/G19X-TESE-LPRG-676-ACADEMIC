@@ -42,6 +42,7 @@ Ver la edición del servidor: `SELECT SERVERPROPERTY('Edition');`
 - `sp_Login`: login antiguo, ya no lo usa la aplicación. Borrarlo cuando todos los usuarios activos hayan iniciado sesión al menos una vez (`DROP PROCEDURE dbo.sp_Login;`). Mientras exista, el hash antiguo funciona como llave de acceso.
 - `migraciones/02_permisos_estatus.sql` quedó reemplazado por `03_transiciones_estatus.sql` (el 03 incluye todo lo del 02).
 - `migraciones/04_crear_orden.sql` crea `sp_CrearOrdenCompra` (alta de órdenes con permisos y transacción). Ya está incluido en `instalacion/03_procedimientos.sql`.
+- `migraciones/05_roles_aprobacion.sql` agrega el estatus "Pendiente de Aprobación", los permisos por cambio y por rol (`EstatusTransicionRoles`) y el filtro de órdenes propias para Compradores. Ya está incluido en `instalacion/`.
 
 ## Cómo regenerar el esquema
 

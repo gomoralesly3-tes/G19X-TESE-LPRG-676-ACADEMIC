@@ -1,0 +1,23 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../backend"
+		},
+		{
+			"path": "../database"
+		},
+		{
+			"path": "../docs"
+		},
+		{
+			"path": "../frontend"
+		},
+		{
+			"path": "../sqlll"
+		}
+	],
+	"settings": {}
+}
