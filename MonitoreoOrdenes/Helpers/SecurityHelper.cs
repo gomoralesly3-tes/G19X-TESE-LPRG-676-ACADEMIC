@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -48,6 +48,39 @@ namespace MonitoreoOrdenes.Helpers
                 return VerificarPbkdf2(password, almacenado);
 
             return VerificarSha256Antiguo(password, almacenado);
+        }
+
+        /// <summary>
+        /// Politica de contraseñas: de 8 a 100 caracteres, con al menos una letra y un numero.
+        /// Devuelve el motivo cuando no se cumple.
+        /// </summary>
+        public static bool EsPasswordValida(string password, out string motivo)
+        {
+            motivo = null;
+
+            if (string.IsNullOrEmpty(password) || password.Length < 8)
+            {
+                motivo = "La contraseña debe tener al menos 8 caracteres.";
+                return false;
+            }
+            if (password.Length > 100)
+            {
+                motivo = "La contraseña no puede tener más de 100 caracteres.";
+                return false;
+            }
+
+            bool hayLetra = false, hayNumero = false;
+            foreach (char c in password)
+            {
+                if (char.IsLetter(c))     hayLetra  = true;
+                else if (char.IsDigit(c)) hayNumero = true;
+            }
+            if (!hayLetra || !hayNumero)
+            {
+                motivo = "La contraseña debe incluir al menos una letra y un número.";
+                return false;
+            }
+            return true;
         }
 
         /// <summary>

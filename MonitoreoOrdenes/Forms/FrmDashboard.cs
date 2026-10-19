@@ -19,7 +19,8 @@ namespace MonitoreoOrdenes.Forms
 
         // Menú
         private Button btnDashboard, btnOrdenes, btnAlertas,
-                       btnNuevaOrden, btnSalir;
+                       btnNuevaOrden, btnSalir,
+                       btnCatalogo, btnUsuarios, btnPassword;
         private Button _btnActivo;
 
         // KPI Cards (paneles simples)
@@ -52,7 +53,7 @@ namespace MonitoreoOrdenes.Forms
         // ═══════════════════════════════════════════════════════
         private void InitializeComponent()
         {
-            this.Text            = "Monitoreo OC — PluriOne S.A. de C.V.";
+            this.Text            = "Monitoreo OC — PluriOne S.A. de C.V." + EntornoApp.Sufijo;
             this.Size            = new Size(1300, 800);
             this.MinimumSize     = new Size(1100, 680);
             this.StartPosition   = FormStartPosition.CenterScreen;
@@ -180,6 +181,19 @@ namespace MonitoreoOrdenes.Forms
             btnNuevaOrden = CrearBtnMenu("  + Nueva Orden");
             btnSalir      = CrearBtnMenu("  Cerrar Sesion");
 
+            // Administración: catálogo de proveedores y usuarios solo para el Administrador (rol 1);
+            // cambiar la contraseña propia lo puede hacer cualquier usuario.
+            bool esAdmin = FrmLogin.UsuarioActual?.RolId == 1;
+            btnCatalogo  = CrearBtnMenu("  Prov. y Productos");
+            btnUsuarios  = CrearBtnMenu("  Usuarios");
+            btnPassword  = CrearBtnMenu("  Cambiar contraseña");
+            btnCatalogo.Visible = esAdmin;
+            btnUsuarios.Visible = esAdmin;
+
+            btnCatalogo.Click += (s, e) => { using (var f = new FrmProveedorProductos()) f.ShowDialog(this); };
+            btnUsuarios.Click += (s, e) => { using (var f = new FrmUsuarios())           f.ShowDialog(this); };
+            btnPassword.Click += (s, e) => { using (var f = new FrmCambiarPassword())    f.ShowDialog(this); };
+
             btnNuevaOrden.BackColor = Color.FromArgb(0, 120, 130);
             btnNuevaOrden.ForeColor = Color.White;
             btnNuevaOrden.Visible   = puedeCrear;
@@ -194,6 +208,9 @@ namespace MonitoreoOrdenes.Forms
 
             panelMenu.Controls.Add(spacer);
             panelMenu.Controls.Add(btnSalir);
+            panelMenu.Controls.Add(btnPassword);
+            if (esAdmin) panelMenu.Controls.Add(btnUsuarios);
+            if (esAdmin) panelMenu.Controls.Add(btnCatalogo);
             if (puedeCrear) panelMenu.Controls.Add(btnNuevaOrden);
             panelMenu.Controls.Add(btnAlertas);
             panelMenu.Controls.Add(btnOrdenes);

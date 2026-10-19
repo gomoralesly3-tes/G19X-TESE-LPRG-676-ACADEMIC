@@ -45,9 +45,13 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Data\CatalogoRepository.cs" />
     <Compile Include="Data\DatabaseHelper.cs" />
     <Compile Include="Data\OrdenCompraRepository.cs" />
     <Compile Include="Data\UsuarioRepository.cs" />
+    <Compile Include="Forms\FrmCambiarPassword.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Forms\FrmDashboard.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -60,6 +64,14 @@
     <Compile Include="Forms\FrmNuevaOrden.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\FrmProveedorProductos.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\FrmUsuarios.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Helpers\EntornoApp.cs" />
+    <Compile Include="Helpers\EstiloAdmin.cs" />
     <Compile Include="Helpers\SecurityHelper.cs" />
     <Compile Include="Helpers\UITheme.cs" />
     <Compile Include="Helpers\UIControls.cs">
@@ -74,6 +86,14 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="conexion.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="conexion.config.example" />
+    <None Include="entorno.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="entorno.config.example" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Forms\FrmLogin.resx">
@@ -81,4 +101,10 @@
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Primera compilacion en un equipo nuevo: crea conexion.config y entorno.config
+       a partir de los modelos. Esos archivos son propios de cada equipo y Git los ignora. -->
+  <Target Name="CrearConfiguracionLocal" BeforeTargets="BeforeBuild">
+    <Copy SourceFiles="conexion.config.example" DestinationFiles="conexion.config" Condition="!Exists('conexion.config')" />
+    <Copy SourceFiles="entorno.config.example" DestinationFiles="entorno.config" Condition="!Exists('entorno.config')" />
+  </Target>
 </Project>

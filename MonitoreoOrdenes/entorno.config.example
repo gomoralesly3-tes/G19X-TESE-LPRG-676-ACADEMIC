@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Modelo del entorno. Se copia a entorno.config (solo en este equipo; Git lo ignora).
+  Valores: Desarrollo  (la ventana muestra [DESARROLLO] en el titulo)
+           Produccion  (sin etiqueta)
+-->
+<appSettings>
+	<add key="Entorno" value="Desarrollo" />
+</appSettings>

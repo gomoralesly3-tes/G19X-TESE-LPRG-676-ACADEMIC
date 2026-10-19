@@ -361,3 +361,27 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# ============================================================
+# Proyecto Monitoreo de Ordenes de Compra
+# ============================================================
+# Respaldos y archivos de base de datos: contienen usuarios, hashes y datos reales
+*.bak
+*.mdf
+*.ldf
+*.ndf
+
+# Comprimidos del proyecto (no se suben; el codigo va en el repositorio)
+*.rar
+*.zip
+*.7z
+
+# Registro del trabajo de alertas (Programador de tareas de Windows)
+generar_alertas.log
+
+# Configuracion local con claves o servidores propios (NUNCA subir contraseñas)
+App.config.local
+*.secret
+
+# Configuracion propia de cada equipo (se crea sola a partir de los .example al compilar)
+conexion.config
+entorno.config

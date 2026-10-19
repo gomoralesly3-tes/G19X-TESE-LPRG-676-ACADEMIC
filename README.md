@@ -1,280 +1,265 @@
 # Monitoreo de Órdenes de Compra
 
-Sistema de escritorio para el seguimiento del ciclo de vida de órdenes de compra. Desarrollado en **Windows Forms / C# (.NET Framework 4.8)** con **SQL Server** como motor de base de datos.
+Aplicación de escritorio (Windows Forms, .NET Framework 4.8) con base de datos SQL Server para dar
+seguimiento a las órdenes de compra de **PluriOne S.A. de C.V.**
 
----
+## Qué hace
 
-## Tabla de contenidos
+- Inicio de sesión con contraseñas guardadas de forma segura (PBKDF2 con sal).
+- Dashboard con indicadores, lista de órdenes con búsqueda y detalle con historial de estatus.
+- Alta de órdenes con validaciones y numeración automática (`OC-AAAA-NNNN`).
+- Flujo de aprobación: `Borrador → Pendiente de Aprobación → Enviada → … → Cerrada`.
+- Permisos por rol; el Comprador solo ve y modifica sus propias órdenes.
+- Cada proveedor ofrece solo los productos que vende, con su precio pactado.
+- Administración desde la aplicación: usuarios, productos por proveedor y cambio de contraseña propia.
+- Alertas automáticas (por vencer, vencidas, incidencias abiertas) generadas por un trabajo programado.
 
-1. [Requisitos previos](#1-requisitos-previos)
-2. [Estructura del proyecto](#2-estructura-del-proyecto)
-3. [Instalación de la base de datos](#3-instalación-de-la-base-de-datos)
-4. [Configurar la cadena de conexión](#4-configurar-la-cadena-de-conexión)
-5. [Compilar y ejecutar la aplicación](#5-compilar-y-ejecutar-la-aplicación)
-6. [Primer usuario administrador](#6-primer-usuario-administrador)
-7. [Alertas automáticas (opcional)](#7-alertas-automáticas-opcional)
-8. [Roles y permisos](#8-roles-y-permisos)
-9. [Flujo de estatus de una orden](#9-flujo-de-estatus-de-una-orden)
-10. [Solución de problemas comunes](#10-solución-de-problemas-comunes)
-
----
-
-## 1. Requisitos previos
-
-| Componente | Versión mínima | Notas |
-|---|---|---|
-| Windows | 10 / 11 | La app es un ejecutable WinForms |
-| .NET Framework | **4.8** | Incluido en Windows 10 May 2019 Update y posteriores. [Descargar aquí](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48) si no está presente |
-| SQL Server | **2016 SP1** o superior | Las vistas usan `CREATE OR ALTER VIEW`, disponible desde esa versión. Sirve cualquier edición: Express, Developer, Standard o Enterprise |
-| SQL Server Management Studio (SSMS) | Cualquier versión reciente | O bien `sqlcmd` desde la línea de comandos |
-| Visual Studio | 2019 o 2022 | Solo para compilar. La solución usa .NET Framework 4.8, **sin paquetes NuGet adicionales** |
-
----
-
-## 2. Estructura del proyecto
+## Estructura del repositorio
 
 ```
-MonitoreoOrdenes/
-├── MonitoreoOrdenes.sln
-└── MonitoreoOrdenes/
-    ├── App.config                   ← Cadena de conexión (editar aquí)
+MonitoreoOrdenes/                  ← raíz del repositorio
+├── README.md
+├── .gitignore
+├── MonitoreoOrdenes.sln           ← solución de Visual Studio
+├── Database/                      ← TODO lo de la base de datos
+│   ├── README.md                  (detalle de los scripts)
+│   ├── instalacion/               (01 a 04: construyen la BD desde cero)
+│   ├── migraciones/               (cambios históricos, solo referencia)
+│   └── jobs/                      (trabajo programado de alertas)
+├── docs/
+│   └── GUIA_PUBLICAR_GITHUB.md    (para quien mantiene el repositorio)
+└── MonitoreoOrdenes/              ← proyecto de C#
+    ├── App.config                 (configuración común; sin servidores ni claves)
+    ├── conexion.config.example    (modelo de la conexión; cada equipo tiene su conexion.config, que Git ignora)
+    ├── entorno.config.example     (modelo del entorno: Desarrollo o Produccion)
+    ├── MonitoreoOrdenes.csproj
     ├── Program.cs
-    ├── Data/
-    │   ├── DatabaseHelper.cs        ← Capa de acceso a datos (ADO.NET)
-    │   ├── OrdenCompraRepository.cs
-    │   └── UsuarioRepository.cs
-    ├── Forms/
-    │   ├── FrmLogin.cs
-    │   ├── FrmDashboard.cs
-    │   ├── FrmNuevaOrden.cs
-    │   └── FrmDetalleOrden.cs
-    ├── Helpers/
-    │   ├── SecurityHelper.cs        ← Hashing PBKDF2-HMAC-SHA256
-    │   ├── UITheme.cs
-    │   └── UIControls.cs
-    ├── Models/
-    │   ├── OrdenCompra.cs
-    │   ├── Usuario.cs
-    │   ├── Alerta.cs
-    │   └── KpiDashboard.cs
-    └── Database/
-        ├── README.md
-        ├── instalacion/             ← Scripts para BD nueva (ejecutar en orden)
-        │   ├── 01_esquema.sql
-        │   ├── 02_vistas.sql
-        │   ├── 03_procedimientos.sql
-        │   └── 04_datos_base.sql
-        ├── migraciones/             ← Historial de cambios (solo referencia)
-        └── jobs/                    ← Configuración de alertas automáticas
-            ├── crear_job_alertas.sql
-            └── generar_alertas.bat
+    ├── Data/  Forms/  Helpers/  Models/  Properties/
 ```
 
----
+## Requisitos
 
-## 3. Instalación de la base de datos
-
-Los scripts crean la base de datos `MonitoreoOrdenesCompra` y todo su esquema. Todos son **idempotentes**: se pueden ejecutar más de una vez sin errores.
-
-### Opción A — SSMS (interfaz gráfica)
-
-1. Abrir **SQL Server Management Studio** y conectarse al servidor de destino.
-2. Abrir cada archivo en el orden indicado y pulsar **F5** (o el botón "Ejecutar"):
-
-| Orden | Archivo | Qué hace |
+| Programa | Para qué | Notas |
 |---|---|---|
-| 1 | `Database/instalacion/01_esquema.sql` | Crea la BD y todas las tablas |
-| 2 | `Database/instalacion/02_vistas.sql` | Crea las 3 vistas del dashboard |
-| 3 | `Database/instalacion/03_procedimientos.sql` | Crea todos los stored procedures |
-| 4 | `Database/instalacion/04_datos_base.sql` | Inserta roles, estatus, catálogos |
+| Windows 10 u 11 | Ejecutar la aplicación | |
+| Visual Studio 2022 (Community es gratis) | Compilar | Al instalar, marca **Desarrollo de escritorio de .NET** |
+| SQL Server 2016 SP1 o superior | Base de datos | Developer o Express. **Express no trae SQL Server Agent** (ver paso 6) |
+| SQL Server Management Studio (SSMS) | Ejecutar los scripts | |
+| Git para Windows | Descargar el código | O usa GitHub Desktop |
 
-### Opción B — `sqlcmd` (línea de comandos)
+Al instalar SQL Server elige **Windows Authentication** y deja marcado **Add current user** como administrador.
+Anota si es instancia por defecto (nombre `.`) o `SQLEXPRESS` (nombre `.\SQLEXPRESS`).
 
-Reemplazar `NOMBRE_SERVIDOR` por el nombre real de tu instancia SQL Server (ej. `.\SQLEXPRESS` para Express local).
+## Instalación en otra laptop
 
-```cmd
-sqlcmd -S NOMBRE_SERVIDOR -E -i "Database\instalacion\01_esquema.sql"
-sqlcmd -S NOMBRE_SERVIDOR -E -i "Database\instalacion\02_vistas.sql"
-sqlcmd -S NOMBRE_SERVIDOR -E -i "Database\instalacion\03_procedimientos.sql"
-sqlcmd -S NOMBRE_SERVIDOR -E -i "Database\instalacion\04_datos_base.sql"
+### 1. Descargar el código
+
+```
+git clone https://github.com/gomoralesly3-tes/MonitoreoOrdenes.git
 ```
 
-> **Nota:** El flag `-E` usa autenticación de Windows (Integrated Security). Si tu servidor requiere usuario y contraseña SQL usa `-U usuario -P contraseña` en su lugar.
+(Cambia la dirección si tu repositorio es otro. Si es privado, inicia sesión en GitHub cuando te lo pida.)
 
----
+### 2. Crear la base de datos
 
-## 4. Configurar la cadena de conexión
+Elige **una** de las dos opciones.
 
-Editar el archivo `MonitoreoOrdenes/App.config` y cambiar el valor de `Server` al nombre de tu servidor SQL:
+#### Opción A: base nueva, vacía (con los scripts)
+
+1. Abre **SSMS** y conéctate: *Server name* = `.` (este equipo), *Authentication* = Windows Authentication.
+2. Menú **File → Open → File…** y abre, **en este orden**, estos archivos de la carpeta `Database\instalacion`.
+   En cada uno pulsa **Execute (F5)** y espera a que termine **sin texto en rojo** en la pestaña *Messages*:
+   1. `01_esquema.sql` (crea la base `MonitoreoOrdenesCompra` y sus tablas)
+   2. `02_vistas.sql`
+   3. `03_procedimientos.sql`
+   4. `04_datos_base.sql` (roles, estatus, tipos de alerta e incidencia, categorías)
+3. Comprueba el resultado con esta consulta. Debe dar **17 tablas, 3 vistas y 9 procedimientos**:
+   ```sql
+   USE MonitoreoOrdenesCompra;
+   SELECT (SELECT COUNT(*) FROM sys.tables)     AS tablas,
+          (SELECT COUNT(*) FROM sys.views)      AS vistas,
+          (SELECT COUNT(*) FROM sys.procedures) AS procedimientos;
+   ```
+4. **Crea el primer usuario administrador** (la base nueva no trae usuarios). Cambia los datos y escribe
+   una clave propia y segura (para este primer paso, solo letras sin acentos ni ñ, números y símbolos comunes):
+   ```sql
+   USE MonitoreoOrdenesCompra;
+   INSERT INTO dbo.Usuarios (nombre, apellido, email, username, password_hash, rol_id)
+   VALUES ('Nombre', 'Apellido', 'correo@empresa.com', 'admin',
+           LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'ESCRIBE_AQUI_TU_CLAVE'), 2)),
+           1);   -- 1 = Administrador
+   ```
+   Inicia sesión en la aplicación **de inmediato**: en ese momento la clave se guarda en el formato seguro.
+   Para más usuarios, repite la consulta con otro `rol_id` (ver tabla de roles). La aplicación todavía no
+   tiene pantalla para cambiar contraseñas. **No escribas la clave en ningún archivo del repositorio.**
+5. **Importante:** esta base no trae proveedores, productos ni órdenes. Para poder crear órdenes necesitas
+   proveedores, productos **y** la relación entre ambos (qué productos vende cada proveedor, con su precio
+   pactado en la tabla `ProveedorProductos`). Cárgalos con tus propios `INSERT` (hay ejemplos al final de
+   `Database\migraciones\06_proveedor_productos.sql`) o usa la Opción B.
+
+#### Opción B: copiar la base de datos que ya tienes (con sus datos)
+
+En la **computadora original**:
+1. En SSMS, clic derecho sobre `MonitoreoOrdenesCompra` → **Tasks → Back Up…** → *Backup type*: Full →
+   elige una ruta y un nombre (por ejemplo `MonitoreoOC.bak`) → **OK**.
+2. Copia el `.bak` a la laptop nueva con USB, OneDrive o similar.
+   **No lo subas a GitHub**: contiene usuarios, contraseñas cifradas y datos reales.
+
+En la **laptop nueva**:
+1. En SSMS, clic derecho sobre **Databases** → **Restore Database…** → **Device** → botón `…` → **Add** →
+   elige el `.bak` → **OK**.
+2. Si marca error de rutas de archivos, entra a la pestaña **Files** y activa
+   **Relocate all files to folder**.
+3. Los trabajos del Agent no viajan en el respaldo: haz el paso 6 de nuevo.
+4. Si el respaldo es anterior a alguna migración de `Database\migraciones`, ejecuta las que falten, en orden
+   numérico (cada una se puede repetir sin problema).
+
+### 3. Configurar la conexión y el entorno
+
+La conexión a la base de datos **no** está en `App.config`. Vive en `MonitoreoOrdenes\conexion.config`, un
+archivo propio de cada equipo que Git ignora: así cada laptop o servidor usa su propio servidor y sus propias
+claves sin tocar el código ni subirlas a GitHub.
+
+**La primera vez que compilas, `conexion.config` se crea solo** a partir de `conexion.config.example`, con
+`Server=.` (este equipo). Si tu instancia es otra, abre el archivo y cambia el servidor:
 
 ```xml
-<connectionStrings>
-  <add name="MonitoreoDB"
-       connectionString="Server=NOMBRE_SERVIDOR;Database=MonitoreoOrdenesCompra;Integrated Security=True;TrustServerCertificate=True;"
-       providerName="System.Data.SqlClient" />
-</connectionStrings>
+connectionString="Server=.;Database=MonitoreoOrdenesCompra;Integrated Security=True;TrustServerCertificate=True;"
 ```
 
-### Ejemplos de valores para `Server`
+- `Server=.` significa "este equipo". Con Express: `Server=.\SQLEXPRESS`.
+- Si compilas y el archivo ya existe, no se sobrescribe.
 
-| Escenario | Valor |
-|---|---|
-| SQL Server Express en la misma PC | `.\SQLEXPRESS` o `localhost\SQLEXPRESS` |
-| SQL Server local (instancia por defecto) | `.` o `localhost` |
-| Servidor en red por nombre | `NOMBRE-PC` o `192.168.1.100` |
-| Instancia nombrada en red | `SERVIDOR\INSTANCIA` |
+**Entorno.** `entorno.config` (también se crea solo) dice si el equipo es de `Desarrollo` o de `Produccion`. En
+Desarrollo, los títulos de las ventanas muestran `[DESARROLLO]`, para no confundir una laptop de pruebas con el
+servidor real. En el servidor de la empresa:
 
-### Autenticación SQL en lugar de Windows
+1. Abre `entorno.config` y cambia el valor a `Produccion`.
+2. En `conexion.config` apunta al servidor real y, cuando sea posible, usa un certificado válido en lugar de
+   `TrustServerCertificate=True`.
 
-Si el servidor no permite autenticación de Windows, cambiar a:
+### 4. Compilar y ejecutar
 
-```xml
-connectionString="Server=NOMBRE_SERVIDOR;Database=MonitoreoOrdenesCompra;User Id=mi_usuario;Password=mi_contraseña;TrustServerCertificate=True;"
-```
+1. Abre `MonitoreoOrdenes.sln` con Visual Studio.
+2. Si el proyecto aparece como **(Descargado)**, clic derecho → **Volver a cargar el proyecto**.
+3. **Compilar → Compilar solución** (Ctrl+Shift+B) y luego **F5**.
+4. Inicia sesión con el usuario que creaste.
 
----
+### 5. Probar
 
-## 5. Compilar y ejecutar la aplicación
+- Inicia sesión con tu usuario administrador.
+- Crea una orden (necesitas al menos un proveedor y un producto).
+- Envíala a aprobación y apruébala con un usuario Supervisor o Administrador.
 
-### Con Visual Studio
+### 6. Alertas automáticas
 
-1. Abrir `MonitoreoOrdenes.sln` en Visual Studio 2019 o 2022.
-2. Verificar que la configuración esté en **Debug** o **Release**.
-3. Pulsar **F5** (con depurador) o **Ctrl+F5** (sin depurador).
+La aplicación **no** genera las alertas por sí sola: las crea `sp_GenerarAlertas`, que debe ejecutarse cada hora.
 
-> No se requiere restaurar paquetes NuGet: el proyecto no usa dependencias externas.
+**Con SQL Server Developer o Standard (tienen Agent):**
+1. En SSMS abre `Database\jobs\crear_job_alertas.sql` y pulsa **Execute**.
+2. Confirma que el servicio **SQL Server Agent** está en ejecución y en inicio **Automático**
+   (tecla Windows → **Servicios** → *SQL Server Agent* → doble clic).
+3. Prueba: `EXEC msdb.dbo.sp_start_job @job_name = N'MonitoreoOC - Generar alertas';` y revisa el historial
+   (SQL Server Agent → Jobs → clic derecho → **View History**).
 
-### Ejecutar directamente el binario compilado
+**Con SQL Server Express (no tiene Agent):** usa `Database\jobs\generar_alertas.bat` con el Programador de
+tareas de Windows, repitiendo la tarea cada hora (pasos en `Database\README.md`).
 
-Una vez compilado, el ejecutable se encuentra en:
+### 7. Respaldos automáticos
 
-```
-MonitoreoOrdenes/bin/Debug/MonitoreoOrdenes.exe
-MonitoreoOrdenes/bin/Release/MonitoreoOrdenes.exe
-```
+**Con SQL Server Developer o Standard (tienen Agent):**
+1. En SSMS abre `Database\jobs\crear_job_respaldo.sql` y pulsa **Execute**.
+   Crea un trabajo que cada día a las 02:00 respalda la base, verifica el archivo y borra los respaldos de más
+   de 14 días. Por omisión guarda en la carpeta de respaldos del servidor SQL, subcarpeta `MonitoreoOC`
+   (puedes cambiarla en el script, en `@CarpetaBase`).
+2. Prueba: `EXEC msdb.dbo.sp_start_job @job_name = N'MonitoreoOC - Respaldo diario';` y revisa el historial.
+3. **Copia esa carpeta a otro disco o a la nube de vez en cuando:** si el disco falla, los respaldos que están en
+   la misma computadora se pierden junto con la base.
 
-Para distribuir a otra máquina, copiar **todo el contenido** de la carpeta `bin/Release/`, no solo el `.exe`. Incluye los archivos de configuración y dependencias del framework necesarios.
+**Con SQL Server Express (sin Agent) o antes de un cambio importante:** ejecuta `Database\jobs\respaldo_manual.sql`
+para hacer un respaldo en ese momento.
 
-> La máquina de destino debe tener **.NET Framework 4.8** instalado.
+Para restaurar un respaldo: en SSMS, clic derecho en **Databases → Restore Database…** (ver Opción B del paso 2).
 
----
+## Roles y permisos
 
-## 6. Primer usuario administrador
+| Rol (`rol_id`) | Órdenes que ve | Qué puede hacer |
+|---|---|---|
+| 1 Administrador | Todas | Todo, incluida la aprobación |
+| 2 Comprador | Solo las que él creó | Crear órdenes, enviarlas a aprobación, devolverlas a Borrador y cambiar estatus de las suyas una vez enviadas |
+| 3 Almacén | Todas | Cambiar estatus desde "Enviada" en adelante (no aprueba ni toca Borrador/Pendiente) |
+| 4 Supervisor | Todas | Aprobar o devolver órdenes pendientes y cambiar estatus después del envío |
+| 5 Consulta | Todas | Solo consulta |
 
-Al ejecutar `04_datos_base.sql` se insertan los catálogos, pero **no se crea ningún usuario**. Al final de ese archivo hay un bloque comentado de ejemplo. Ejecutar en SSMS la siguiente consulta, reemplazando los valores:
+Los cambios de estatus permitidos por rol están en la tabla `EstatusTransicionRoles` y los valida la base de datos.
+
+**Pantallas de administración** (en el menú lateral):
+
+| Pantalla | Quién la ve | Para qué |
+|---|---|---|
+| Usuarios | Solo Administrador | Crear y editar usuarios, activarlos o desactivarlos y restablecer su contraseña |
+| Prov. y Productos | Solo Administrador | Definir qué productos vende cada proveedor, con precio pactado y días de entrega |
+| Cambiar contraseña | Todos | Cambiar la propia contraseña (mínimo 8 caracteres, con letra y número) |
+
+Nadie puede desactivarse a sí mismo y siempre debe quedar al menos un Administrador activo.
+
+## Variante: la aplicación en una laptop y la base de datos en otra
+
+1. En el equipo con la base de datos: en **SQL Server Configuration Manager** activa **TCP/IP**
+   y reinicia el servicio; permite el puerto **1433** en el Firewall de Windows.
+2. Entre equipos que no están en un dominio, `Integrated Security` no funciona. Crea un usuario de SQL Server
+   (activa *Mixed Mode* en las propiedades del servidor) con permisos sobre la base de datos.
+3. En el `conexion.config` de la laptop cliente, la cadena queda así:
+   `Server=IP_DEL_SERVIDOR;Database=MonitoreoOrdenesCompra;User Id=USUARIO;Password=CLAVE;TrustServerCertificate=True;`
+4. `conexion.config` lleva una contraseña, pero **Git ya lo ignora**: no se sube a GitHub. Aun así, no lo envíes
+   por correo ni lo copies a otras carpetas del repositorio.
+
+## Solución de problemas
+
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| `Invalid object name 'dbo.Usuarios'` (u otra tabla) | Un script se ejecutó en la base equivocada (por ejemplo `master`) | Elige `MonitoreoOrdenesCompra` en el selector de SSMS o inicia el script con `USE MonitoreoOrdenesCompra;`. Si algo quedó en `master`, bórralo allí |
+| `A network-related or instance-specific error` | Nombre de servidor mal escrito o servicio detenido | Revisa `Server=` en `conexion.config`; en **Servicios** confirma *SQL Server* en ejecución; el nombre real sale de `SELECT @@SERVERNAME` |
+| `Login failed for user '...'` | Tu usuario de Windows no tiene acceso a SQL Server | Ver bloque de abajo |
+| `The certificate chain was issued by an authority that is not trusted` | Falta `TrustServerCertificate=True` | Ya viene en la cadena de conexión; verifica que no lo hayas borrado |
+| El proyecto aparece como **(Descargado)** y no deja correrlo | Se descargó para editarlo | Clic derecho → **Volver a cargar el proyecto** |
+| Error de compilación por .NET Framework 4.8 | Falta el componente en Visual Studio | Visual Studio Installer → Modificar → **Desarrollo de escritorio de .NET** |
+| "Usuario o contraseña incorrectos" | Usuario inexistente, inactivo (`activo = 0`) o clave mal escrita | Consulta `SELECT username, activo, rol_id FROM Usuarios;` y restablece la clave (abajo) |
+| Las listas de proveedor o producto en "Nueva Orden" están vacías | Base nueva sin datos, o el proveedor no tiene productos asignados | Carga proveedores, productos y la relación en `ProveedorProductos`, o usa la Opción B |
+| No aparecen alertas nuevas | Falta el trabajo programado o el Agent está detenido | Paso 6; prueba con `EXEC dbo.sp_GenerarAlertas;` |
+| El trabajo de alertas falla con el error 15404 | El propietario del trabajo es una cuenta de Windows | `EXEC msdb.dbo.sp_update_job @job_name = N'MonitoreoOC - Generar alertas', @owner_login_name = N'sa';` |
+
+**Dar acceso a tu usuario de Windows** (solo si te sale `Login failed`; cambia `EQUIPO\Usuario`):
 
 ```sql
-USE [MonitoreoOrdenesCompra];
+CREATE LOGIN [EQUIPO\Usuario] FROM WINDOWS;
 GO
-
--- Generar el hash con la aplicación, o insertar con hash SHA-256 temporal.
--- La app lo migrará a PBKDF2 automáticamente en el primer login.
-INSERT INTO dbo.Usuarios (nombre, apellido, email, username, password_hash, rol_id, activo)
-VALUES (
-    'Admin',
-    'Principal',
-    'admin@empresa.com',
-    'admin',
-    -- Hash SHA-256 de la contraseña 'Admin123' (la app lo actualizará a PBKDF2 en el primer login)
-    'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3',
-    1,   -- rol_id 1 = Administrador
-    1
-);
+USE MonitoreoOrdenesCompra;
+CREATE USER [EQUIPO\Usuario] FOR LOGIN [EQUIPO\Usuario];
+ALTER ROLE db_datareader ADD MEMBER [EQUIPO\Usuario];
+ALTER ROLE db_datawriter ADD MEMBER [EQUIPO\Usuario];
+GRANT EXECUTE TO [EQUIPO\Usuario];
+GRANT EXECUTE ON TYPE::dbo.TipoLineaOrden TO [EQUIPO\Usuario];
 ```
 
-> Tras el primer inicio de sesión correcto, el hash se migra automáticamente a **PBKDF2-HMAC-SHA256** (100.000 iteraciones, sal única por usuario).
-
----
-
-## 7. Alertas automáticas (opcional)
-
-El procedimiento `sp_GenerarAlertas` revisa órdenes próximas a vencer, vencidas e incidencias abiertas. **La aplicación no lo llama directamente**; debe programarse en el servidor.
-
-### SQL Server Standard / Enterprise / Developer (tiene SQL Server Agent)
-
-Ejecutar en SSMS:
-
-```
-Database/jobs/crear_job_alertas.sql
-```
-
-Esto crea un trabajo de SQL Agent que ejecuta `sp_GenerarAlertas` cada hora.
-
-### SQL Server Express (sin SQL Server Agent)
-
-Usar el Programador de tareas de Windows con el script batch:
-
-1. Editar `Database/jobs/generar_alertas.bat` y ajustar el nombre del servidor.
-2. Abrir el **Programador de tareas de Windows** (taskschd.msc).
-3. Crear una tarea básica que ejecute `generar_alertas.bat` con repetición de **1 hora**.
-
-Para saber qué edición tiene tu servidor:
+**Restablecer la clave de un usuario** (clave temporal con caracteres sin acentos ni ñ; se convierte al formato seguro al primer ingreso):
 
 ```sql
-SELECT SERVERPROPERTY('Edition');
+UPDATE dbo.Usuarios
+SET password_hash = LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'ClaveTemporal1'), 2))
+WHERE username = 'el_usuario';
 ```
 
----
+## Seguridad: lista de verificación
 
-## 8. Roles y permisos
+- Repositorio de GitHub **privado**.
+- No subir contraseñas, archivos `.bak` ni `conexion.config` (Git ya los ignora; no los fuerces con `git add -f`).
+- `TrustServerCertificate=True` es aceptable para desarrollo; en producción usa un certificado válido.
+- SQL Server **Developer Edition es solo para desarrollo y pruebas**. Para uso real en la empresa se requiere una
+  edición con licencia (Standard) o Express.
+- Programa los respaldos automáticos (paso 7) y copia la carpeta de respaldos a otro disco o a la nube.
 
-| rol_id | Rol | Crear órdenes | Cambiar estatus | Ver órdenes |
-|---|---|---|---|---|
-| 1 | Administrador | ✅ Todas | ✅ Todos los flujos | Todas |
-| 2 | Comprador | ✅ Solo las propias | ✅ Sus propias órdenes (desde Enviada) | Solo las propias |
-| 3 | Almacén | ❌ | ✅ Desde Enviada en adelante | Todas |
-| 4 | Supervisor | ❌ | ✅ Aprueba Pendiente→Enviada; desde Enviada | Todas |
-| 5 | Consulta | ❌ | ❌ | Todas (solo lectura) |
+## Pendientes conocidos
 
----
-
-## 9. Flujo de estatus de una orden
-
-```
-Borrador (1)
-    └─► Pendiente de Aprobación (11) ──► Enviada (2) ──► Confirmada (3) ──► En Proceso (4)
-                                                                                   └─► En Tránsito (5)
-                                                                                            ├─► Recibida Parcial (6) ─┐
-                                                                                            └─► Recibida Completa (7) ◄┘
-                                                                                                     └─► Cerrada (10)
-```
-
-- **Cancelada (8)** y **Cerrada (10)** son estados finales (sin salida).
-- **En Disputa (9)** puede originarse desde cualquier estado activo y volver a varios estados del flujo.
-- Los cambios de estatus son validados por la base de datos (tabla `EstatusTransiciones` + `EstatusTransicionRoles`), no solo por la interfaz.
-
----
-
-## 10. Solución de problemas comunes
-
-### La aplicación no conecta a la BD
-- Verificar que el nombre del servidor en `App.config` es correcto.
-- Confirmar que el servicio de SQL Server está corriendo en la máquina de destino.
-- Si usas autenticación Windows, el usuario de Windows que ejecuta la app debe tener acceso a la BD.
-- Probar la conexión desde SSMS con las mismas credenciales antes de ejecutar la app.
-
-### Error "No se encontró la cadena de conexión 'MonitoreoDB'"
-- Asegurarse de estar ejecutando el `.exe` de la carpeta `bin/`, no una copia suelta del ejecutable sin su `.config` al lado.
-- Verificar que `MonitoreoOrdenes.exe.config` existe junto al `.exe`.
-
-### Error al ejecutar los scripts SQL ("CREATE OR ALTER VIEW not supported")
-- Tu versión de SQL Server es anterior a **2016 SP1**. Actualizar SQL Server o reemplazar `CREATE OR ALTER VIEW` por `CREATE VIEW` (previa eliminación manual si ya existe).
-
-### Los scripts de instalación fallan por permisos
-- El usuario de Windows o SQL que ejecuta los scripts necesita al menos el rol `dbcreator` en el servidor (para crear la BD) y `db_owner` en la base ya creada.
-
-### No aparece el botón "Nueva Orden" en el dashboard
-- Es por diseño: solo los usuarios con rol **Administrador (1)** o **Comprador (2)** lo ven.
-
----
-
-## Información del proyecto
-
-| Campo | Valor |
-|---|---|
-| Empresa | PluriOne S.A. de C.V. |
-| Versión | 1.0.0 |
-| Framework | .NET Framework 4.8 |
-| Base de datos | SQL Server 2016 SP1+ |
-| Autenticación BD | Windows Integrated Security (por defecto) |
-| Hashing de contraseñas | PBKDF2-HMAC-SHA256, 100 000 iteraciones, sal por usuario |
+- Indicadores de cumplimiento y tiempos de entrega, y analítica de riesgos.
+- Que la ventana no se congele cuando la base tarda en responder (`async/await`).

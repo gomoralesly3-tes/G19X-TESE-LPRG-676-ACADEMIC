@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Modelo de conexion a la base de datos. Se copia a conexion.config (solo en este equipo).
+  conexion.config NO se sube a GitHub: asi cada laptop o servidor usa su propia conexion.
+
+  Server=.                 este equipo, instancia por defecto
+  Server=.\SQLEXPRESS      este equipo, SQL Server Express
+  Server=NOMBRE_O_IP       otro equipo de la red (ver README: "Variante")
+
+  Con usuario y clave de SQL (solo si es necesario):
+  Server=...;Database=MonitoreoOrdenesCompra;User Id=USUARIO;Password=CLAVE;TrustServerCertificate=True;
+
+  En produccion usa un certificado valido y quita TrustServerCertificate=True.
+-->
+<connectionStrings>
+	<add name="MonitoreoDB"
+		 connectionString="Server=.;Database=MonitoreoOrdenesCompra;Integrated Security=True;TrustServerCertificate=True;"
+		 providerName="System.Data.SqlClient" />
+</connectionStrings>

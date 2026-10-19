@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
@@ -25,7 +25,7 @@ namespace MonitoreoOrdenes.Data
                 var settings = ConfigurationManager.ConnectionStrings[ConnectionName];
                 if (settings == null || string.IsNullOrWhiteSpace(settings.ConnectionString))
                     throw new ConfigurationErrorsException(
-                        $"No se encontró la cadena de conexión '{ConnectionName}' en App.config.");
+                        $"No se encontró la cadena de conexión '{ConnectionName}' en conexion.config.");
                 return settings.ConnectionString;
             }
         }

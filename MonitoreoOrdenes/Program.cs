@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows.Forms;
 using MonitoreoOrdenes.Data;
 using MonitoreoOrdenes.Forms;
@@ -14,11 +14,14 @@ namespace MonitoreoOrdenes
             Application.SetCompatibleTextRenderingDefault(false);
 
             // Verificar conexión antes de abrir
-            if (!DatabaseHelper.TestConnection())
+            string error;
+            if (!DatabaseHelper.TestConnection(out error))
             {
                 MessageBox.Show(
                     "No se puede conectar a la base de datos.\n\n" +
-                    "Verifique la cadena de conexión en App.config.",
+                    "Revise el servidor en el archivo conexion.config (junto al programa) " +
+                    "y que SQL Server esté en ejecución.\n\n" +
+                    "Detalle: " + error,
                     "Error de Conexión",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
