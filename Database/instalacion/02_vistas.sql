@@ -2,7 +2,9 @@
 -- 02_vistas.sql  -  Vistas usadas por la aplicacion y por reportes
 --   vw_OrdenesCompraDetalle  : la usa sp_ObtenerOrdenesCompra (lista de ordenes)
 --   vw_KPIs_Dashboard        : la usa el dashboard (tarjetas)
---   vw_RendimientoProveedores: analitica de proveedores (la app aun no la usa)
+--   vw_RendimientoProveedores: resumen por proveedor para consultas y reportes directos en SQL.
+--                              La pantalla Indicadores usa sp_IndicadoresProveedores, que agrega
+--                              filtro de periodo y alcance por rol (el Comprador solo ve lo suyo).
 -- Ejecutar DESPUES de 01_esquema.sql. Se puede repetir (CREATE OR ALTER,
 -- requiere SQL Server 2016 SP1 o superior).
 -- ============================================================
