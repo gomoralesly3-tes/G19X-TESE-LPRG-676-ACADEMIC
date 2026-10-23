@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 using MonitoreoOrdenes.Data;
+using MonitoreoOrdenes.Helpers;
 using MonitoreoOrdenes.Models;
 
 namespace MonitoreoOrdenes.Forms
@@ -26,6 +27,24 @@ namespace MonitoreoOrdenes.Forms
         private ComboBox cboNuevoEstatus;
         private Label    lblEstatusFinal;
 
+        // Incidencias de la orden
+        private readonly IncidenciaRepository _incRepo = new IncidenciaRepository();
+        private TabPage      tabIncidencias;
+        private DataGridView dgvIncidencias;
+        private Button       btnRegistrarInc, btnResolverInc;
+
+        // Registran incidencias: 1 Administrador, 2 Comprador, 3 Almacén, 4 Supervisor.
+        // Las resuelven: 1 Administrador, 2 Comprador y 4 Supervisor. La base de datos valida lo mismo
+        // (sp_RegistrarIncidencia y sp_ResolverIncidencia) y limita al Comprador a sus propias órdenes.
+        private static readonly int[] RolesQueRegistranIncidencias = { 1, 2, 3, 4 };
+        private static readonly int[] RolesQueResuelvenIncidencias = { 1, 2, 4 };
+
+        private static bool TieneRol(int[] roles)
+        {
+            var usuario = FrmLogin.UsuarioActual;
+            return usuario != null && Array.IndexOf(roles, usuario.RolId) >= 0;
+        }
+
         // Roles que pueden cambiar estatus alguna vez: 1 Administrador, 2 Comprador,
         // 3 Almacén, 4 Supervisor. QUE cambios concretos puede hacer cada rol lo define
         // la tabla EstatusTransicionRoles y lo valida sp_CambiarEstatusOrden.
@@ -44,6 +63,7 @@ namespace MonitoreoOrdenes.Forms
         {
             _orden = orden;
             InitializeComponent();
+            CargarIncidencias();   // antes que CargarDatos: deja actualizado el conteo de incidencias abiertas
             CargarDatos();
         }
 
@@ -65,8 +85,9 @@ namespace MonitoreoOrdenes.Forms
 
             tabInfo      = new TabPage("📋 Información General");
             tabHistorial = new TabPage("🕐 Historial de Estatus");
+            tabIncidencias = new TabPage("⚠ Incidencias");
 
-            tabControl.TabPages.AddRange(new[] { tabInfo, tabHistorial });
+            tabControl.TabPages.AddRange(new[] { tabInfo, tabHistorial, tabIncidencias });
             this.Controls.Add(tabControl);
 
             // Botones inferiores
@@ -145,6 +166,307 @@ namespace MonitoreoOrdenes.Forms
                 }
             };
             tabHistorial.Controls.Add(dgvHistorial);
+
+            // Tab Incidencias
+            dgvIncidencias = new DataGridView
+            {
+                Dock                = DockStyle.Fill,
+                ReadOnly            = true,
+                MultiSelect         = false,
+                AllowUserToAddRows  = false,
+                RowHeadersVisible   = false,
+                SelectionMode       = DataGridViewSelectionMode.FullRowSelect,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                BackgroundColor     = Color.White,
+                BorderStyle         = BorderStyle.None,
+                Font                = new Font("Segoe UI", 9),
+                ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
+                {
+                    BackColor = Color.FromArgb(30, 58, 95),
+                    ForeColor = Color.White,
+                    Font      = new Font("Segoe UI", 9, FontStyle.Bold)
+                }
+            };
+            dgvIncidencias.Columns.Add("Fecha",       "Fecha");
+            dgvIncidencias.Columns.Add("Tipo",        "Tipo");
+            dgvIncidencias.Columns.Add("Gravedad",    "Gravedad");
+            dgvIncidencias.Columns.Add("Descripcion", "Descripción");
+            dgvIncidencias.Columns.Add("Reporto",     "Reportó");
+            dgvIncidencias.Columns.Add("Estado",      "Estado");
+            dgvIncidencias.Columns.Add("Resolucion",  "Resolución");
+            dgvIncidencias.Columns["Descripcion"].FillWeight = 220;
+            dgvIncidencias.Columns["Resolucion"].FillWeight  = 170;
+            dgvIncidencias.SelectionChanged += (s, e) => ActualizarBotonesIncidencia();
+
+            var barraInc = new Panel { Dock = DockStyle.Top, Height = 46 };
+            btnRegistrarInc = EstiloAdmin.Boton("+ Registrar incidencia",   8, 7, 170, 32, EstiloAdmin.Rojo);
+            btnResolverInc  = EstiloAdmin.Boton("✓ Resolver seleccionada", 188, 7, 190, 32, EstiloAdmin.Verde);
+            btnRegistrarInc.Click += BtnRegistrarInc_Click;
+            btnResolverInc.Click  += BtnResolverInc_Click;
+            barraInc.Controls.AddRange(new Control[] { btnRegistrarInc, btnResolverInc });
+
+            tabIncidencias.Controls.Add(dgvIncidencias);
+            tabIncidencias.Controls.Add(barraInc);   // agregado al final: queda arriba de la grilla
+        }
+
+        // ── Incidencias ─────────────────────────────────────────
+
+        private static string TextoGravedad(int gravedad)
+        {
+            return gravedad == 1 ? "Alta" : gravedad == 2 ? "Media" : "Baja";
+        }
+
+        private void CargarIncidencias()
+        {
+            try
+            {
+                DataTable dt = _incRepo.ObtenerIncidencias(_orden.OrdenId);
+                dgvIncidencias.Rows.Clear();
+
+                int abiertas = 0;
+                foreach (DataRow r in dt.Rows)
+                {
+                    bool resuelta = Convert.ToBoolean(r["resuelta"]);
+                    if (!resuelta) abiertas++;
+
+                    string resolucion = "";
+                    if (resuelta)
+                    {
+                        string nota  = r["resolucion_nota"] == DBNull.Value ? "" : r["resolucion_nota"].ToString();
+                        string fecha = r["fecha_resolucion"] == DBNull.Value
+                            ? "" : Convert.ToDateTime(r["fecha_resolucion"]).ToString("dd/MM/yyyy");
+                        resolucion = nota + (fecha == "" ? "" : "  (" + fecha + ")");
+                    }
+
+                    int idx = dgvIncidencias.Rows.Add(
+                        Convert.ToDateTime(r["fecha_reporte"]).ToString("dd/MM/yyyy HH:mm"),
+                        r["tipo"],
+                        TextoGravedad(Convert.ToInt32(r["gravedad"])),
+                        r["descripcion"],
+                        r["reportada_por"],
+                        resuelta ? "Resuelta" : "Abierta",
+                        resolucion);
+
+                    var fila = dgvIncidencias.Rows[idx];
+                    fila.Tag = Convert.ToInt32(r["incidencia_id"]);
+                    if (!resuelta) fila.DefaultCellStyle.ForeColor = Color.FromArgb(185, 28, 28);
+                }
+
+                _orden.IncidenciasAbiertas = abiertas;
+                tabIncidencias.Text = abiertas > 0 ? "⚠ Incidencias (" + abiertas + ")" : "⚠ Incidencias";
+                ActualizarBotonesIncidencia();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudieron cargar las incidencias: " + ex);
+                MessageBox.Show("No se pudieron cargar las incidencias.\n\n" + ex.Message,
+                    "Incidencias", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void ActualizarBotonesIncidencia()
+        {
+            // No se registran incidencias en órdenes canceladas (8) ni cerradas (10)
+            bool ordenAbierta = _orden.EstatusId != 8 && _orden.EstatusId != 10;
+            btnRegistrarInc.Visible = TieneRol(RolesQueRegistranIncidencias) && ordenAbierta;
+
+            var fila = dgvIncidencias.CurrentRow;
+            bool hayAbierta = fila != null && fila.Tag != null &&
+                              Convert.ToString(fila.Cells["Estado"].Value) == "Abierta";
+            btnResolverInc.Visible = TieneRol(RolesQueResuelvenIncidencias);
+            btnResolverInc.Enabled = hayAbierta;
+        }
+
+        private void BtnRegistrarInc_Click(object sender, EventArgs e)
+        {
+            DataTable tipos;
+            try
+            {
+                tipos = _incRepo.ObtenerTipos();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudieron cargar los tipos de incidencia: " + ex);
+                MessageBox.Show("No se pudieron cargar los tipos de incidencia.\n\n" + ex.Message,
+                    "Incidencias", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            int tipoId;
+            string descripcion;
+            if (!PedirIncidencia(this, tipos, out tipoId, out descripcion)) return;
+
+            try
+            {
+                _incRepo.Registrar(_orden.OrdenId, tipoId, descripcion);
+                HuboCambios = true;
+                CargarIncidencias();
+                CargarDatos();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudo registrar la incidencia: " + ex);
+                MessageBox.Show(ex.Message, "No se pudo registrar la incidencia",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void BtnResolverInc_Click(object sender, EventArgs e)
+        {
+            var fila = dgvIncidencias.CurrentRow;
+            if (fila == null || fila.Tag == null) return;
+            if (Convert.ToString(fila.Cells["Estado"].Value) != "Abierta") return;
+
+            string nota;
+            if (!PedirResolucion(this, out nota)) return;
+
+            try
+            {
+                _incRepo.Resolver((int)fila.Tag, nota);
+                HuboCambios = true;
+                CargarIncidencias();
+                CargarDatos();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("No se pudo resolver la incidencia: " + ex);
+                MessageBox.Show(ex.Message, "No se pudo resolver la incidencia",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        /// <summary>Pide tipo y descripción de la incidencia. Devuelve false si se cancela.</summary>
+        private static bool PedirIncidencia(IWin32Window owner, DataTable tipos, out int tipoId, out string descripcion)
+        {
+            tipoId = 0;
+            descripcion = null;
+            int    tipoElegido = 0;
+            string textoElegido = null;
+
+            using (var dlg = new Form())
+            {
+                dlg.Text            = "Registrar incidencia";
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition   = FormStartPosition.CenterParent;
+                dlg.MaximizeBox     = false;
+                dlg.MinimizeBox     = false;
+                dlg.ShowInTaskbar   = false;
+                dlg.BackColor       = Color.White;
+                dlg.ClientSize      = new Size(460, 330);
+
+                var cbo = new ComboBox
+                {
+                    Location      = new Point(20, 34),
+                    Size          = new Size(420, 28),
+                    Font          = new Font("Segoe UI", 10),
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    DataSource    = tipos,
+                    DisplayMember = "nombre",
+                    ValueMember   = "tipo_id"
+                };
+                var txt = new TextBox
+                {
+                    Location    = new Point(20, 98),
+                    Size        = new Size(420, 120),
+                    Multiline   = true,
+                    MaxLength   = 500,
+                    ScrollBars  = ScrollBars.Vertical,
+                    Font        = new Font("Segoe UI", 10),
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+                var error = new Label
+                {
+                    Location  = new Point(20, 226),
+                    Size      = new Size(420, 36),
+                    ForeColor = EstiloAdmin.Rojo,
+                    Font      = new Font("Segoe UI", 9)
+                };
+                var ok     = EstiloAdmin.Boton("Registrar", 250, 280, 110, 34, EstiloAdmin.Azul);
+                var cancel = EstiloAdmin.BotonSecundario("Cancelar", 370, 280, 70, 34);
+                cancel.DialogResult = DialogResult.Cancel;
+
+                ok.Click += (s, e) =>
+                {
+                    if (cbo.SelectedValue == null) { error.Text = "Selecciona el tipo de incidencia."; return; }
+                    if (string.IsNullOrWhiteSpace(txt.Text)) { error.Text = "Describe la incidencia."; return; }
+                    tipoElegido  = Convert.ToInt32(cbo.SelectedValue);
+                    textoElegido = txt.Text.Trim();
+                    dlg.DialogResult = DialogResult.OK;
+                };
+
+                dlg.Controls.AddRange(new Control[]
+                {
+                    EstiloAdmin.Etiqueta("Tipo de incidencia",           20, 12), cbo,
+                    EstiloAdmin.Etiqueta("Descripción (qué pasó, cuánto)", 20, 76), txt,
+                    error, ok, cancel
+                });
+                dlg.AcceptButton = null;       // Enter en la descripción debe crear un renglón, no cerrar
+                dlg.CancelButton = cancel;
+
+                if (dlg.ShowDialog(owner) != DialogResult.OK) return false;
+            }
+
+            tipoId = tipoElegido;
+            descripcion = textoElegido;
+            return true;
+        }
+
+        /// <summary>Pide cómo se resolvió la incidencia. Devuelve false si se cancela.</summary>
+        private static bool PedirResolucion(IWin32Window owner, out string nota)
+        {
+            nota = null;
+            string textoElegido = null;
+
+            using (var dlg = new Form())
+            {
+                dlg.Text            = "Resolver incidencia";
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition   = FormStartPosition.CenterParent;
+                dlg.MaximizeBox     = false;
+                dlg.MinimizeBox     = false;
+                dlg.ShowInTaskbar   = false;
+                dlg.BackColor       = Color.White;
+                dlg.ClientSize      = new Size(460, 280);
+
+                var txt = new TextBox
+                {
+                    Location    = new Point(20, 34),
+                    Size        = new Size(420, 120),
+                    Multiline   = true,
+                    MaxLength   = 500,
+                    ScrollBars  = ScrollBars.Vertical,
+                    Font        = new Font("Segoe UI", 10),
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+                var error = new Label
+                {
+                    Location  = new Point(20, 162),
+                    Size      = new Size(420, 36),
+                    ForeColor = EstiloAdmin.Rojo,
+                    Font      = new Font("Segoe UI", 9)
+                };
+                var ok     = EstiloAdmin.Boton("Resolver", 250, 230, 110, 34, EstiloAdmin.Verde);
+                var cancel = EstiloAdmin.BotonSecundario("Cancelar", 370, 230, 70, 34);
+                cancel.DialogResult = DialogResult.Cancel;
+
+                ok.Click += (s, e) =>
+                {
+                    if (string.IsNullOrWhiteSpace(txt.Text)) { error.Text = "Describe cómo se resolvió."; return; }
+                    textoElegido = txt.Text.Trim();
+                    dlg.DialogResult = DialogResult.OK;
+                };
+
+                dlg.Controls.AddRange(new Control[]
+                {
+                    EstiloAdmin.Etiqueta("¿Cómo se resolvió?", 20, 12), txt, error, ok, cancel
+                });
+                dlg.CancelButton = cancel;
+
+                if (dlg.ShowDialog(owner) != DialogResult.OK) return false;
+            }
+
+            nota = textoElegido;
+            return true;
         }
 
         private void CargarDatos()
