@@ -56,6 +56,8 @@ Solo funciona mientras la computadora del servidor esté encendida.
 - `migraciones/02_permisos_estatus.sql` quedó reemplazado por `03_transiciones_estatus.sql` (el 03 incluye todo lo del 02).
 - `migraciones/04_crear_orden.sql` crea `sp_CrearOrdenCompra` (alta de órdenes con permisos y transacción). Ya está incluido en `instalacion/03_procedimientos.sql`.
 - `migraciones/06_proveedor_productos.sql` crea `ProveedorProductos` (qué vende cada proveedor, con precio pactado), carga una asignación propuesta y hace que `sp_CrearOrdenCompra` rechace productos que el proveedor no ofrece. Ya está incluido en `instalacion/`.
+- `migraciones/09_incidencias.sql` crea `sp_ObtenerIncidencias`, `sp_RegistrarIncidencia` y `sp_ResolverIncidencia` (pestaña Incidencias del detalle de la orden). Ya está incluido en `instalacion/03_procedimientos.sql`.
+- `migraciones/08_indicadores.sql` crea `sp_IndicadoresProveedores`, `sp_RiesgoOrdenesAbiertas` y `sp_TiempoPorEstatus` (pantalla Indicadores). Ya está incluido en `instalacion/03_procedimientos.sql`.
 - `migraciones/07_administracion.sql` agrega los procedimientos de las pantallas de usuarios y de productos por proveedor (solo Administrador). Ya está incluido en `instalacion/03_procedimientos.sql`.
 - `migraciones/05_roles_aprobacion.sql` agrega el estatus "Pendiente de Aprobación", los permisos por cambio y por rol (`EstatusTransicionRoles`) y el filtro de órdenes propias para Compradores. Ya está incluido en `instalacion/`.
 
@@ -72,3 +74,8 @@ SSMS → clic derecho en la base → Tareas → Generar scripts → tablas, vist
 
 Por omisión los archivos van a la carpeta de respaldos del servidor SQL, subcarpeta `MonitoreoOC`. Esos
 respaldos están en la misma computadora: copia la carpeta a otro disco o a la nube.
+
+## Datos de ejemplo (opcional)
+
+`instalacion/05_datos_ejemplo.sql` carga 5 proveedores y 10 productos ficticios con su relación, para probar la
+aplicación en una base nueva. No lo ejecutes en producción. No crea usuarios ni órdenes.

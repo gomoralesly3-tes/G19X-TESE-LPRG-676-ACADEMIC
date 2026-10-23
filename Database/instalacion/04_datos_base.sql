@@ -155,8 +155,9 @@ GO
 -- Quita los "--", cambia los datos y escribe una clave PROPIA y segura
 -- (para este primer paso solo letras sin acentos ni ñ, numeros y simbolos
 -- comunes). Inicia sesion de inmediato: la aplicacion la guarda entonces en
--- el formato seguro PBKDF2. La aplicacion aun no tiene pantalla para cambiar
--- la clave. NO dejes la clave escrita en este archivo ni la subas a GitHub.
+-- el formato seguro PBKDF2. Despues, cada persona puede cambiar su clave en
+-- "Cambiar contraseña" y el Administrador puede restablecer la de otros en
+-- "Usuarios". NO dejes la clave escrita en este archivo ni la subas a GitHub.
 -- INSERT INTO dbo.Usuarios (nombre, apellido, email, username, password_hash, rol_id)
 -- VALUES ('Nombre', 'Apellido', 'correo@empresa.com', 'admin',
 --         LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'ESCRIBE_UNA_CLAVE_TEMPORAL'), 2)),

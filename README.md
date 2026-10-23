@@ -12,6 +12,9 @@ seguimiento a las órdenes de compra de **PluriOne S.A. de C.V.**
 - Permisos por rol; el Comprador solo ve y modifica sus propias órdenes.
 - Cada proveedor ofrece solo los productos que vende, con su precio pactado.
 - Administración desde la aplicación: usuarios, productos por proveedor y cambio de contraseña propia.
+- Indicadores: cumplimiento y tiempos de entrega por proveedor, riesgo de las órdenes abiertas (con el motivo de
+  cada puntaje) y tiempo que las órdenes pasan en cada estatus.
+- Incidencias: se registran y se resuelven desde el detalle de la orden (pestaña «Incidencias»).
 - Alertas automáticas (por vencer, vencidas, incidencias abiertas) generadas por un trabajo programado.
 
 ## Estructura del repositorio
@@ -23,11 +26,13 @@ MonitoreoOrdenes/                  ← raíz del repositorio
 ├── MonitoreoOrdenes.sln           ← solución de Visual Studio
 ├── Database/                      ← TODO lo de la base de datos
 │   ├── README.md                  (detalle de los scripts)
-│   ├── instalacion/               (01 a 04: construyen la BD desde cero)
+│   ├── instalacion/               (01 a 04 construyen la BD desde cero; 05 es opcional: datos de ejemplo)
 │   ├── migraciones/               (cambios históricos, solo referencia)
 │   └── jobs/                      (trabajo programado de alertas)
 ├── docs/
-│   └── GUIA_PUBLICAR_GITHUB.md    (para quien mantiene el repositorio)
+│   ├── GUIA_PUBLICAR_GITHUB.md    (para quien mantiene el repositorio)
+│   ├── PLAN_DE_COMMITS.md         (cómo subir los cambios en commits pequeños)
+│   └── USO_DE_IA.md               (declaración de uso de inteligencia artificial)
 └── MonitoreoOrdenes/              ← proyecto de C#
     ├── App.config                 (configuración común; sin servidores ni claves)
     ├── conexion.config.example    (modelo de la conexión; cada equipo tiene su conexion.config, que Git ignora)
@@ -55,10 +60,12 @@ Anota si es instancia por defecto (nombre `.`) o `SQLEXPRESS` (nombre `.\SQLEXPR
 ### 1. Descargar el código
 
 ```
-git clone https://github.com/gomoralesly3-tes/MonitoreoOrdenes.git
+git clone https://github.com/USUARIO/G19X-TESE-LPRG-676-ACADEMIC.git
+cd G19X-TESE-LPRG-676-ACADEMIC
 ```
 
-(Cambia la dirección si tu repositorio es otro. Si es privado, inicia sesión en GitHub cuando te lo pida.)
+Sustituye `USUARIO` por la cuenta u organización dueña del repositorio; la dirección exacta está en el botón
+verde **Code** de GitHub. Si el repositorio es privado, inicia sesión en GitHub cuando te lo pida.
 
 ### 2. Crear la base de datos
 
@@ -73,7 +80,7 @@ Elige **una** de las dos opciones.
    2. `02_vistas.sql`
    3. `03_procedimientos.sql`
    4. `04_datos_base.sql` (roles, estatus, tipos de alerta e incidencia, categorías)
-3. Comprueba el resultado con esta consulta. Debe dar **17 tablas, 3 vistas y 9 procedimientos**:
+3. Comprueba el resultado con esta consulta. Debe dar **18 tablas, 3 vistas y 20 procedimientos**:
    ```sql
    USE MonitoreoOrdenesCompra;
    SELECT (SELECT COUNT(*) FROM sys.tables)     AS tablas,
@@ -90,12 +97,17 @@ Elige **una** de las dos opciones.
            1);   -- 1 = Administrador
    ```
    Inicia sesión en la aplicación **de inmediato**: en ese momento la clave se guarda en el formato seguro.
-   Para más usuarios, repite la consulta con otro `rol_id` (ver tabla de roles). La aplicación todavía no
-   tiene pantalla para cambiar contraseñas. **No escribas la clave en ningún archivo del repositorio.**
+   Los demás usuarios se crean desde la pantalla **Usuarios** del menú lateral (solo Administrador). Cada persona
+   cambia su contraseña en **Cambiar contraseña**, y el Administrador puede restablecer la de otros en **Usuarios**.
+   **No escribas la clave en ningún archivo del repositorio.**
 5. **Importante:** esta base no trae proveedores, productos ni órdenes. Para poder crear órdenes necesitas
    proveedores, productos **y** la relación entre ambos (qué productos vende cada proveedor, con su precio
-   pactado en la tabla `ProveedorProductos`). Cárgalos con tus propios `INSERT` (hay ejemplos al final de
-   `Database\migraciones\06_proveedor_productos.sql`) o usa la Opción B.
+   pactado en la tabla `ProveedorProductos`). Tienes tres caminos:
+   - **Datos de ejemplo (para probar):** ejecuta `Database\instalacion\05_datos_ejemplo.sql`, que carga 5
+     proveedores, 10 productos y su relación. Son datos ficticios; no lo uses en producción.
+   - **Datos reales:** captura el catálogo de productos de cada proveedor en la pantalla **Prov. y Productos**
+     (los proveedores y productos nuevos se dan de alta con `INSERT`; hay ejemplos en `Database\migraciones\06_proveedor_productos.sql`).
+   - **Opción B:** restaura un respaldo que ya tenga los datos.
 
 #### Opción B: copiar la base de datos que ya tienes (con sus datos)
 
@@ -200,6 +212,8 @@ Los cambios de estatus permitidos por rol están en la tabla `EstatusTransicionR
 | Usuarios | Solo Administrador | Crear y editar usuarios, activarlos o desactivarlos y restablecer su contraseña |
 | Prov. y Productos | Solo Administrador | Definir qué productos vende cada proveedor, con precio pactado y días de entrega |
 | Cambiar contraseña | Todos | Cambiar la propia contraseña (mínimo 8 caracteres, con letra y número) |
+| Incidencias (pestaña del detalle de una orden) | Registran: Administrador, Comprador (sus órdenes), Almacén y Supervisor. Resuelven: Administrador, Comprador (sus órdenes) y Supervisor | Registrar un problema de una orden y cerrarlo con una nota de resolución |
+| Indicadores | Todos (el Comprador solo ve cifras de sus órdenes) | Cumplimiento y tiempos de entrega por proveedor, riesgo de órdenes abiertas y tiempo por estatus |
 
 Nadie puede desactivarse a sí mismo y siempre debe quedar al menos un Administrador activo.
 
@@ -259,7 +273,12 @@ WHERE username = 'el_usuario';
   edición con licencia (Standard) o Express.
 - Programa los respaldos automáticos (paso 7) y copia la carpeta de respaldos a otro disco o a la nube.
 
+## Uso de inteligencia artificial
+
+El proyecto se desarrolló con asistencia de IA (Claude, de Anthropic). El detalle de qué se hizo con IA y qué
+hizo la persona autora está en [`docs/USO_DE_IA.md`](docs/USO_DE_IA.md). Los commits que incluyen código o
+documentos generados con ayuda de IA lo indican en el cuerpo del mensaje.
+
 ## Pendientes conocidos
 
-- Indicadores de cumplimiento y tiempos de entrega, y analítica de riesgos.
 - Que la ventana no se congele cuando la base tarda en responder (`async/await`).
