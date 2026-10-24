@@ -20,7 +20,8 @@ namespace MonitoreoOrdenes.Forms
         // Menú
         private Button btnDashboard, btnOrdenes, btnAlertas,
                        btnNuevaOrden, btnSalir,
-                       btnCatalogo, btnUsuarios, btnPassword;
+                       btnCatalogo, btnUsuarios, btnPassword,
+                       btnIndicadores;
         private Button _btnActivo;
 
         // KPI Cards (paneles simples)
@@ -190,6 +191,10 @@ namespace MonitoreoOrdenes.Forms
             btnCatalogo.Visible = esAdmin;
             btnUsuarios.Visible = esAdmin;
 
+            // Indicadores: lo ven todos los roles (el Comprador solo ve las cifras de sus órdenes)
+            btnIndicadores = CrearBtnMenu("  Indicadores");
+            btnIndicadores.Click += (s, e) => { using (var f = new FrmIndicadores()) f.ShowDialog(this); };
+
             btnCatalogo.Click += (s, e) => { using (var f = new FrmProveedorProductos()) f.ShowDialog(this); };
             btnUsuarios.Click += (s, e) => { using (var f = new FrmUsuarios())           f.ShowDialog(this); };
             btnPassword.Click += (s, e) => { using (var f = new FrmCambiarPassword())    f.ShowDialog(this); };
@@ -212,6 +217,7 @@ namespace MonitoreoOrdenes.Forms
             if (esAdmin) panelMenu.Controls.Add(btnUsuarios);
             if (esAdmin) panelMenu.Controls.Add(btnCatalogo);
             if (puedeCrear) panelMenu.Controls.Add(btnNuevaOrden);
+            panelMenu.Controls.Add(btnIndicadores);
             panelMenu.Controls.Add(btnAlertas);
             panelMenu.Controls.Add(btnOrdenes);
             panelMenu.Controls.Add(btnDashboard);
