@@ -60,7 +60,7 @@ Anota si es instancia por defecto (nombre `.`) o `SQLEXPRESS` (nombre `.\SQLEXPR
 ### 1. Descargar el código
 
 ```
-git clone https://github.com/USUARIO/G19X-TESE-LPRG-676-ACADEMIC.git
+git clone https://github.com/gomoralesly3-tes/G19X-TESE-LPRG-676-ACADEMIC.git
 cd G19X-TESE-LPRG-676-ACADEMIC
 ```
 
