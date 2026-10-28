@@ -103,8 +103,10 @@ Elige **una** de las dos opciones.
 5. **Importante:** esta base no trae proveedores, productos ni órdenes. Para poder crear órdenes necesitas
    proveedores, productos **y** la relación entre ambos (qué productos vende cada proveedor, con su precio
    pactado en la tabla `ProveedorProductos`). Tienes tres caminos:
-   - **Datos de ejemplo (para probar):** ejecuta `Database\instalacion\05_datos_ejemplo.sql`, que carga 5
-     proveedores, 10 productos y su relación. Son datos ficticios; no lo uses en producción.
+   - **Datos de ejemplo (para probar):**
+   * Ejecuta `Database\instalacion\05_datos_ejemplo.sql`, que carga 5 proveedores, 10 productos y su relación. Son datos ficticios; no lo uses en producción.
+   * Ejecuta `Database\instalacion\06_ordenes_ejemplo.sql` (opcional), que carga 13 órdenes ficticias con historial de estatus e incidencias. Ejecútalo únicamente después de crear el primer usuario administrador para visualizar los gráficos e indicadores de la aplicación.
+
    - **Datos reales:** captura el catálogo de productos de cada proveedor en la pantalla **Prov. y Productos**
      (los proveedores y productos nuevos se dan de alta con `INSERT`; hay ejemplos en `Database\migraciones\06_proveedor_productos.sql`).
    - **Opción B:** restaura un respaldo que ya tenga los datos.
