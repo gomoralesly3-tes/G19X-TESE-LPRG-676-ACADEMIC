@@ -1,7 +1,7 @@
 # Bitácora de Instalación Limpia
 
 * **Fecha de ejecución:** 28 de octubre de 2026
-* **Commit de referencia:** ``
+* **Commit de referencia:** 20aa0af
 * **Entorno de prueba:** Windows 11 / .NET 8.0 / Visual Studio 2022
 
 

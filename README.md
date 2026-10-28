@@ -282,3 +282,13 @@ documentos generados con ayuda de IA lo indican en el cuerpo del mensaje.
 ## Pendientes conocidos
 
 - Que la ventana no se congele cuando la base tarda en responder (`async/await`).
+
+
+## Evidencias de Instalación
+
+La bitácora de pruebas de instalación limpia se encuentra registrada en:
+* **Archivo:** [docs/Evidencias/instalacion_limpia.md](docs/Evidencias/instalacion_limpia.md)
+* **Fecha:** 28 de octubre de 2026
+* **Commit de instalación:** `20aa0af`
+
+
