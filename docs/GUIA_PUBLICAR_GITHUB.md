@@ -4,7 +4,7 @@ Para quien mantiene el repositorio. No es necesaria para instalar la aplicación
 
 ## 1. Antes de empezar
 
-- Tu repositorio ya apunta a `https://github.com/gomoralesly3-tes/MonitoreoOrdenes`. Confírmalo con
+- El repositorio del proyecto se llama `G19X-TESE-LPRG-676-ACADEMIC`. Confirma a cuál apunta tu carpeta con
   `git remote -v` en la carpeta del proyecto. Si esa cuenta no es tuya o no tienes permiso de escritura,
   mira la sección 6.
 - El repositorio debe ser **privado**: incluye nombres de proveedores, la empresa y el diseño de seguridad.
@@ -106,3 +106,8 @@ Abre el repositorio en el navegador y comprueba:
 
 Borrarlo en un commit nuevo **no basta**: queda en el historial. Cambia de inmediato esa contraseña y avísame
 para ver cómo limpiar el historial.
+
+## 10. Commits pequeños
+
+Sube los cambios en commits por tema y con mensaje claro; la secuencia sugerida para los cambios actuales
+está en [`PLAN_DE_COMMITS.md`](PLAN_DE_COMMITS.md).
