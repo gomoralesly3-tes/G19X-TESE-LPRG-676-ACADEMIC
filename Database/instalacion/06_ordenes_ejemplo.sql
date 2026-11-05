@@ -10,7 +10,7 @@
 --
 -- Protegido contra duplicados mediante WHERE NOT EXISTS por numero_orden.
 -- ============================================================
-USE [MonitoreoOrdenesCompra1]
+USE [MonitoreoOrdenesCompra]
 GO
 
 -- 1. Obtener el usuario Administrador
