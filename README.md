@@ -64,8 +64,6 @@ git clone https://github.com/gomoralesly3-tes/G19X-TESE-LPRG-676-ACADEMIC.git
 cd G19X-TESE-LPRG-676-ACADEMIC
 ```
 
-Sustituye `USUARIO` por la cuenta u organización dueña del repositorio; la dirección exacta está en el botón
-verde **Code** de GitHub. Si el repositorio es privado, inicia sesión en GitHub cuando te lo pida.
 
 ### 2. Crear la base de datos
 
