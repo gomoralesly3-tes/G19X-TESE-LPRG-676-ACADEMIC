@@ -26,7 +26,7 @@ MonitoreoOrdenes/                  ← raíz del repositorio
 ├── MonitoreoOrdenes.sln           ← solución de Visual Studio
 ├── Database/                      ← TODO lo de la base de datos
 │   ├── README.md                  (detalle de los scripts)
-│   ├── instalacion/               (01 a 04 construyen la BD desde cero; 05 es opcional: datos de ejemplo)
+│   ├── instalacion/               (01 a 04 construyen la BD desde cero; 05 y 06 son opcionales: datos y órdenes de ejemplo)
 │   ├── migraciones/               (cambios históricos, solo referencia)
 │   └── jobs/                      (trabajo programado de alertas)
 ├── docs/
@@ -290,5 +290,21 @@ La bitácora de pruebas de instalación limpia se encuentra registrada en:
 * **Archivo:** [docs/Evidencias/instalacion_limpia.md](docs/Evidencias/instalacion_limpia.md)
 * **Fecha:** 28 de octubre de 2026
 * **Commit de instalación:** `20aa0af`
+
+## Cuentas de Prueba
+
+Para facilitar la evaluación de roles y control de acceso (RBAC) sin necesidad de dar de alta usuarios manualmente desde la interfaz, se incluye el script `Database/instalacion/07_usuarios_prueba.sql`. 
+
+> **Advertencia de Seguridad:** Estas credenciales son **exclusivamente para fines de prueba y demostración en desarrollo**. En un entorno de producción deben eliminarse o cambiarse inmediatamente.
+
+| Usuario | Rol | Propósito / Permisos |
+| :--- | :--- | :--- |
+| `comprador` | Comprador (2) | Visualiza y gestiona únicamente sus propias órdenes de compra. |
+| `almacen` | Almacén (3) | Modifica el estatus de las órdenes a partir del estado «Enviada». |
+| `supervisor` | Supervisor (4) | Revisa y aprueba/rechaza órdenes de compra solicitadas. |
+| `consulta` | Consulta (5) | Acceso de solo lectura global a reportes e historial sin permisos de modificación. |
+
+*Nota: La aplicación migrará automáticamente el hash `SHA2_256` inicial a `PBKDF2` durante el primer inicio de sesión exitoso de cada cuenta.*
+
 
 
