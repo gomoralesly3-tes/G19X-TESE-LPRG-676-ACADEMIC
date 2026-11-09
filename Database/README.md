@@ -15,13 +15,19 @@ Ejecutar en este orden, cada archivo completo (F5 en SQL Server Management Studi
 2. `instalacion/02_vistas.sql` — vistas (lista de órdenes, KPIs del dashboard, rendimiento de proveedores)
 3. `instalacion/03_procedimientos.sql` — procedimientos almacenados
 4. `instalacion/04_datos_base.sql` — roles, estatus, cambios de estatus permitidos y catálogos
+5. `instalacion/05_datos_ejemplo.sql` — carga 5 proveedores y 10 productos ficticios con su respectiva relación (opcional para probar sin restaurar respaldo).
+6. `instalacion/06_ordenes_ejemplo.sql` — carga 13 órdenes de prueba (`OC-DEMO`) con su respectivo historial e incidencias. Se ejecuta después de crear el administrador y no debe usarse en producción.
+7. `instalacion/07_usuarios_prueba.sql` — crea cuentas ficticias por cada rol (Comprador, Almacén, Supervisor y Consulta) con claves temporales para pruebas rápidas de RBAC.
 
-Desde la línea de comandos:
+   Desde la línea de comandos:
 
     sqlcmd -S SERVIDOR -E -i instalacion\01_esquema.sql
     sqlcmd -S SERVIDOR -E -i instalacion\02_vistas.sql
     sqlcmd -S SERVIDOR -E -i instalacion\03_procedimientos.sql
     sqlcmd -S SERVIDOR -E -i instalacion\04_datos_base.sql
+    sqlcmd -S SERVIDOR -E -i instalacion\05_datos_ejemplo.sql
+    sqlcmd -S SERVIDOR -E -i instalacion\06_ordenes_ejemplo.sql
+    sqlcmd -S SERVIDOR -E -i instalacion\07_usuarios_prueba.sql
 
 Después, crear el primer usuario administrador con el bloque comentado al final de `04_datos_base.sql`.
 
