@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
@@ -33,6 +34,8 @@ namespace MonitoreoOrdenes.Forms
         private Panel    panelFiltros, panelKpis;
         private TextBox  txtBusqueda;
         private Button   btnBuscar, btnLimpiar;
+        private ComboBox cboEstatus, cboProveedor, cboPrioridad;
+        private DateTimePicker dtpDesde, dtpHasta;
         private DataGridView dgvOrdenes;
         private Label    lblContador;
         private Timer    timerRefresh;
@@ -64,6 +67,12 @@ namespace MonitoreoOrdenes.Forms
             ConstruirHeader();
             ConstruirMenu();
             ConstruirContenido();
+
+            // Orden de acoplamiento (Dock): WinForms acopla primero el control que esta
+            // al fondo del z-order. El encabezado debe acoplarse primero y el contenido
+            // (Fill) al final; si no, el contenido queda debajo del menu y del encabezado.
+            panelContent.BringToFront();
+            panelHeader.SendToBack();
         }
 
         private void FrmDashboard_FormClosing(object sender, FormClosingEventArgs e)
@@ -154,15 +163,16 @@ namespace MonitoreoOrdenes.Forms
             panelMenu.Controls.Add(panelLogo);
 
             // Separador
-            panelMenu.Controls.Add(new Label
+            var lblSeparador = new Label
             {
                 Height    = 1,
                 Dock      = DockStyle.Top,
                 BackColor = Color.FromArgb(30, 255, 255, 255)
-            });
+            };
+            panelMenu.Controls.Add(lblSeparador);
 
             // Etiqueta
-            panelMenu.Controls.Add(new Label
+            var lblNavegacion = new Label
             {
                 Text      = "  NAVEGACIÓN",
                 Font      = new Font("Segoe UI", 7, FontStyle.Bold),
@@ -171,7 +181,8 @@ namespace MonitoreoOrdenes.Forms
                 Height    = 28,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Padding   = new Padding(12, 0, 0, 0)
-            });
+            };
+            panelMenu.Controls.Add(lblNavegacion);
 
             // Solo mostrar "Nueva Orden" si es Admin o Comprador
             bool puedeCrear = FrmLogin.UsuarioActual?.RolId <= 2;
@@ -221,6 +232,12 @@ namespace MonitoreoOrdenes.Forms
             panelMenu.Controls.Add(btnAlertas);
             panelMenu.Controls.Add(btnOrdenes);
             panelMenu.Controls.Add(btnDashboard);
+
+            // Logo, separador y etiqueta se acoplan primero (quedan arriba de los botones);
+            // el ultimo SendToBack es el primero en acoplarse.
+            lblNavegacion.SendToBack();
+            lblSeparador.SendToBack();
+            panelLogo.SendToBack();
 
             ActivarMenu(btnDashboard);
             this.Controls.Add(panelMenu);
@@ -397,7 +414,7 @@ namespace MonitoreoOrdenes.Forms
             panelFiltros = new Panel
             {
                 Location  = new Point(20, 175),
-                Height    = 44,
+                Height    = 84,
                 BackColor = Color.White
             };
             panelFiltros.Paint += (s, e) =>
@@ -455,6 +472,11 @@ namespace MonitoreoOrdenes.Forms
             btnLimpiar.Click += (s, e) =>
             {
                 txtBusqueda.Text = "";
+                cboEstatus.SelectedIndex   = 0;
+                cboProveedor.SelectedIndex = 0;
+                cboPrioridad.SelectedIndex = 0;
+                dtpDesde.Checked = false;
+                dtpHasta.Checked = false;
                 CargarGridOrdenes();
             };
 
@@ -467,8 +489,52 @@ namespace MonitoreoOrdenes.Forms
                 AutoSize  = true
             };
 
+            // ── Filtros: estatus, proveedor, prioridad y rango de fechas (opcional) ──
+            cboEstatus   = CrearCombo(62, 105);
+            cboProveedor = CrearCombo(243, 140);
+            cboPrioridad = CrearCombo(457, 80);
+            dtpDesde     = CrearFecha(593);
+            dtpHasta     = CrearFecha(749);
+
+            // La lista desplegable puede ser mas ancha que el combo
+            cboEstatus.DropDownWidth   = 190;
+            cboProveedor.DropDownWidth = 260;
+
+            try
+            {
+                LlenarCombo(cboEstatus,
+                    DatabaseHelper.ExecuteQuery(
+                        "SELECT estatus_id, nombre FROM EstatusOrden ORDER BY estatus_id"),
+                    "estatus_id", "nombre");
+
+                // Sin WHERE activo=1: asi tambien se pueden filtrar ordenes de proveedores inactivos
+                LlenarCombo(cboProveedor,
+                    DatabaseHelper.ExecuteQuery(
+                        "SELECT proveedor_id, nombre FROM Proveedores ORDER BY nombre"),
+                    "proveedor_id", "nombre");
+
+                // Mismos valores que en Nueva Orden: 1=Alta, 2=Media, 3=Baja
+                cboPrioridad.Items.Add(new Opcion { Id = null, Texto = "(Todos)" });
+                cboPrioridad.Items.Add(new Opcion { Id = 1,    Texto = "Alta" });
+                cboPrioridad.Items.Add(new Opcion { Id = 2,    Texto = "Media" });
+                cboPrioridad.Items.Add(new Opcion { Id = 3,    Texto = "Baja" });
+                cboPrioridad.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("No se pudieron cargar los filtros:\n" + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
             panelFiltros.Controls.AddRange(new Control[]
-            { lblIcon, txtBusqueda, btnBuscar, btnLimpiar, lblContador });
+            {
+                lblIcon, txtBusqueda, btnBuscar, btnLimpiar, lblContador,
+                CrearEtiqueta("Estatus:",   10),  cboEstatus,
+                CrearEtiqueta("Proveedor:", 175), cboProveedor,
+                CrearEtiqueta("Prioridad:", 391), cboPrioridad,
+                CrearEtiqueta("Desde:",     547), dtpDesde,
+                CrearEtiqueta("Hasta:",     705), dtpHasta
+            });
 
             txtBusqueda.KeyDown += (s, e) =>
             { if (e.KeyCode == Keys.Enter) AplicarFiltros(); };
@@ -481,12 +547,76 @@ namespace MonitoreoOrdenes.Forms
             };
         }
 
+        // ── Ayudas para los filtros ─────────────────────────────
+        private class Opcion
+        {
+            public int?   Id;
+            public string Texto;
+            public override string ToString() { return Texto; }
+        }
+
+        private static Label CrearEtiqueta(string texto, int x)
+        {
+            return new Label
+            {
+                Text      = texto,
+                AutoSize  = true,
+                Location  = new Point(x, 53),
+                Font      = new Font("Segoe UI", 9, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 116, 139)
+            };
+        }
+
+        private static ComboBox CrearCombo(int x, int ancho)
+        {
+            return new ComboBox
+            {
+                Location      = new Point(x, 49),
+                Width         = ancho,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font          = new Font("Segoe UI", 9)
+            };
+        }
+
+        private static DateTimePicker CrearFecha(int x)
+        {
+            return new DateTimePicker
+            {
+                Location     = new Point(x, 49),
+                Width        = 104,
+                Format       = DateTimePickerFormat.Short,
+                ShowCheckBox = true,   // desmarcada = sin filtro de fecha
+                Checked      = false,
+                Font         = new Font("Segoe UI", 9)
+            };
+        }
+
+        private static void LlenarCombo(ComboBox cbo, DataTable dt, string colId, string colTexto)
+        {
+            cbo.Items.Clear();
+            cbo.Items.Add(new Opcion { Id = null, Texto = "(Todos)" });
+            foreach (DataRow r in dt.Rows)
+                cbo.Items.Add(new Opcion
+                {
+                    Id    = Convert.ToInt32(r[colId]),
+                    Texto = r[colTexto].ToString()
+                });
+            cbo.SelectedIndex = 0;
+        }
+
+        // Id elegido en el combo; null si esta en "(Todos)"
+        private static int? IdSel(ComboBox cbo)
+        {
+            var op = cbo.SelectedItem as Opcion;
+            return op == null ? (int?)null : op.Id;
+        }
+
         // ── Grid ────────────────────────────────────────────────
         private void ConstruirGrid()
         {
             dgvOrdenes = new DataGridView
             {
-                Location                    = new Point(20, 228),
+                Location                    = new Point(20, 268),
                 BackgroundColor             = Color.White,
                 BorderStyle                 = BorderStyle.None,
                 ReadOnly                    = true,
@@ -571,7 +701,25 @@ namespace MonitoreoOrdenes.Forms
                     !string.IsNullOrWhiteSpace(txtBusqueda.Text))
                     busqueda = txtBusqueda.Text.Trim();
 
-                var ordenes = _repo.ObtenerOrdenes(numeroOrden: busqueda);
+                DateTime? desde = dtpDesde.Checked ? dtpDesde.Value.Date : (DateTime?)null;
+                DateTime? hasta = dtpHasta.Checked ? dtpHasta.Value.Date : (DateTime?)null;
+
+                if (desde.HasValue && hasta.HasValue && desde.Value > hasta.Value)
+                {
+                    MessageBox.Show("La fecha \"Desde\" no puede ser mayor que \"Hasta\".",
+                        "Filtros", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // La restriccion del Comprador (solo sus ordenes) la aplica el procedimiento
+                // con @usuario_id; estos filtros solo se suman a esa condicion.
+                var ordenes = _repo.ObtenerOrdenes(
+                    estatusId:   IdSel(cboEstatus),
+                    proveedorId: IdSel(cboProveedor),
+                    prioridad:   IdSel(cboPrioridad),
+                    desde:       desde,
+                    hasta:       hasta,
+                    numeroOrden: busqueda);
                 dgvOrdenes.Rows.Clear();
                 dgvOrdenes.Columns.Clear();
 
@@ -586,6 +734,10 @@ namespace MonitoreoOrdenes.Forms
                 Columna("Monto",     "Monto",          125);
                 Columna("Alert",     "Alertas",        55);
                 Columna("Dias",      "Dias",           45);
+
+                // El proveedor ocupa el ancho sobrante (ventana maximizada o pantalla grande)
+                dgvOrdenes.Columns["Prov"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+                dgvOrdenes.Columns["Prov"].MinimumWidth = 160;
 
                 foreach (var o in ordenes)
                 {
@@ -681,8 +833,8 @@ namespace MonitoreoOrdenes.Forms
             panelKpis.Visible    = true;
             panelFiltros.Visible = true;
             panelFiltros.Location = new Point(20, 175);
-            dgvOrdenes.Location   = new Point(20, 228);
-            dgvOrdenes.Height     = panelContent.Height - 238;
+            dgvOrdenes.Location   = new Point(20, 268);
+            dgvOrdenes.Height     = panelContent.Height - 278;
             CargarDashboard();
         }
 
@@ -694,8 +846,8 @@ namespace MonitoreoOrdenes.Forms
             panelKpis.Visible    = false;
             panelFiltros.Visible = true;
             panelFiltros.Location = new Point(20, 70);
-            dgvOrdenes.Location   = new Point(20, 123);
-            dgvOrdenes.Height     = panelContent.Height - 133;
+            dgvOrdenes.Location   = new Point(20, 163);
+            dgvOrdenes.Height     = panelContent.Height - 173;
             CargarGridOrdenes();
         }
 
