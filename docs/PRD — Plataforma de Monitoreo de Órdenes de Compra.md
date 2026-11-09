@@ -96,7 +96,7 @@ Prioridad: Must (indispensable), Should (importante), Could (deseable). Estado: 
 - RF-14 Detalle de la orden con información general e historial de estatus. Must · Listo.
 - RF-15 Cambio de estatus con flujo válido, permisos por rol y comentario. Must · Listo.
 - RF-16 Flujo de aprobación: enviar a aprobación, aprobar y devolver. Must · Listo.
-- RF-17 Filtros por estatus, proveedor, prioridad y fechas en la lista. Should · Parcial (la base de datos ya los soporta; falta la pantalla).
+- RF-17 Filtros por estatus, proveedor, prioridad y fechas en la lista. Should · Listo (la base de datos ya los soporta; se creo la pantalla).
 - RF-18 Paginación para listas grandes. Should · Pendiente.
 - RF-19 Editar una orden mientras esté en Borrador. Should · Pendiente.
 - RF-20 Exportar órdenes e indicadores a Excel o PDF. Should · Pendiente.
