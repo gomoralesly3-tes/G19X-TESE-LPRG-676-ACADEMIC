@@ -69,13 +69,13 @@ namespace MonitoreoOrdenes.Forms
                 }
             };
 
-            var lblIcono = new Label
+            // Logo MOC dibujado con GDI+ (nítido en cualquier escala de pantalla)
+            var logo = new LogoMoc
             {
-                Text      = "📦",
-                Font      = new Font("Segoe UI", 52),
-                ForeColor = Color.White,
-                Location  = new Point(150, 130),
-                AutoSize  = true
+                Tipo        = LogoMoc.TipoLogo.Vertical,
+                FondoOscuro = true,
+                Location    = new Point(60, 70),
+                Size        = new Size(280, 200)
             };
 
             var lblTitulo = new Label
@@ -83,8 +83,9 @@ namespace MonitoreoOrdenes.Forms
                 Text      = "Monitoreo de",
                 Font      = new Font("Segoe UI", 20, FontStyle.Bold),
                 ForeColor = Color.White,
-                Location  = new Point(60, 230),
-                AutoSize  = true
+                Location  = new Point(0, 292),
+                Size      = new Size(400, 36),
+                TextAlign = ContentAlignment.MiddleCenter
             };
 
             var lblTitulo2 = new Label
@@ -92,8 +93,17 @@ namespace MonitoreoOrdenes.Forms
                 Text      = "Órdenes de Compra",
                 Font      = new Font("Segoe UI", 18, FontStyle.Bold),
                 ForeColor = UITheme.Acento,
-                Location  = new Point(60, 260),
-                AutoSize  = true
+                Location  = new Point(0, 326),
+                Size      = new Size(400, 34),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            // Línea de acento bajo el título
+            var lineaAcento = new Panel
+            {
+                Size      = new Size(48, 3),
+                Location  = new Point(176, 376),
+                BackColor = UITheme.Acento
             };
 
             var lblEmpresa = new Label
@@ -101,8 +111,9 @@ namespace MonitoreoOrdenes.Forms
                 Text      = "PluriOne S.A. de C.V.",
                 Font      = new Font("Segoe UI", 10),
                 ForeColor = Color.FromArgb(180, 255, 255, 255),
-                Location  = new Point(60, 310),
-                AutoSize  = true
+                Location  = new Point(0, 396),
+                Size      = new Size(400, 22),
+                TextAlign = ContentAlignment.MiddleCenter
             };
 
             var lblSlogan = new Label
@@ -110,8 +121,9 @@ namespace MonitoreoOrdenes.Forms
                 Text      = "Develop Talent & Technology",
                 Font      = new Font("Segoe UI", 9, FontStyle.Italic),
                 ForeColor = Color.FromArgb(140, 255, 255, 255),
-                Location  = new Point(60, 335),
-                AutoSize  = true
+                Location  = new Point(0, 420),
+                Size      = new Size(400, 20),
+                TextAlign = ContentAlignment.MiddleCenter
             };
 
             // Versión
@@ -120,13 +132,14 @@ namespace MonitoreoOrdenes.Forms
                 Text      = "v1.0.0",
                 Font      = new Font("Segoe UI", 8),
                 ForeColor = Color.FromArgb(100, 255, 255, 255),
-                Location  = new Point(175, 500),
-                AutoSize  = true
+                Location  = new Point(0, 516),
+                Size      = new Size(400, 16),
+                TextAlign = ContentAlignment.MiddleCenter
             };
 
             panelIzquierdo.Controls.AddRange(new Control[]
             {
-                lblIcono, lblTitulo, lblTitulo2, lblEmpresa, lblSlogan, lblVersion
+                logo, lblTitulo, lblTitulo2, lineaAcento, lblEmpresa, lblSlogan, lblVersion
             });
 
             this.Controls.Add(panelIzquierdo);
@@ -149,7 +162,7 @@ namespace MonitoreoOrdenes.Forms
 
             var lblBienvenida = new Label
             {
-                Text      = "Bienvenida 👋",
+                Text      = "Bienvenida",
                 Font      = new Font("Segoe UI", 22, FontStyle.Bold),
                 ForeColor = UITheme.TextoPrimario,
                 Location  = new Point(60, 80),

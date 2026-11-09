@@ -123,7 +123,15 @@ namespace MonitoreoOrdenes.Forms
                 Anchor    = AnchorStyles.Top | AnchorStyles.Right
             };
 
-            panelHeader.Controls.AddRange(new Control[] { lblTitulo, lblUsuario, lblFecha });
+            var logoHeader = new LogoMoc
+            {
+                Tipo        = LogoMoc.TipoLogo.Horizontal,
+                FondoOscuro = true,
+                Location    = new Point(16, 7),
+                Size        = new Size(150, 41)
+            };
+
+            panelHeader.Controls.AddRange(new Control[] { logoHeader, lblTitulo, lblUsuario, lblFecha });
             panelHeader.Resize += (s, e) =>
             {
                 lblUsuario.Location = new Point(panelHeader.Width - lblUsuario.Width - 20, 10);
@@ -144,23 +152,6 @@ namespace MonitoreoOrdenes.Forms
                 Dock      = DockStyle.Left,
                 BackColor = Color.FromArgb(10, 37, 64)
             };
-
-            // Logo
-            var panelLogo = new Panel
-            {
-                Dock      = DockStyle.Top,
-                Height    = 55,
-                BackColor = Color.FromArgb(5, 25, 50)
-            };
-            panelLogo.Controls.Add(new Label
-            {
-                Text      = "PLURIONE",
-                Font      = new Font("Segoe UI", 15, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0, 173, 181),
-                Dock      = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter
-            });
-            panelMenu.Controls.Add(panelLogo);
 
             // Separador
             var lblSeparador = new Label
@@ -233,11 +224,10 @@ namespace MonitoreoOrdenes.Forms
             panelMenu.Controls.Add(btnOrdenes);
             panelMenu.Controls.Add(btnDashboard);
 
-            // Logo, separador y etiqueta se acoplan primero (quedan arriba de los botones);
+            // Separador y etiqueta se acoplan primero (quedan arriba de los botones);
             // el ultimo SendToBack es el primero en acoplarse.
             lblNavegacion.SendToBack();
             lblSeparador.SendToBack();
-            panelLogo.SendToBack();
 
             ActivarMenu(btnDashboard);
             this.Controls.Add(panelMenu);
@@ -255,11 +245,19 @@ namespace MonitoreoOrdenes.Forms
                 BackColor = Color.FromArgb(10, 37, 64),
                 Font      = new Font("Segoe UI", 10),
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding   = new Padding(16, 0, 0, 0),
+                Padding   = new Padding(20, 0, 0, 0),
                 Cursor    = Cursors.Hand
             };
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(25, 255, 255, 255);
+
+            // Barra turquesa a la izquierda del botón activo
+            btn.Paint += (s, e) =>
+            {
+                if (!ReferenceEquals(s, _btnActivo)) return;
+                using (var br = new SolidBrush(Color.FromArgb(0, 173, 181)))
+                    e.Graphics.FillRectangle(br, 0, 0, 4, ((Control)s).Height);
+            };
             return btn;
         }
 
@@ -269,10 +267,12 @@ namespace MonitoreoOrdenes.Forms
             {
                 _btnActivo.BackColor = Color.FromArgb(10, 37, 64);
                 _btnActivo.ForeColor = Color.FromArgb(180, 220, 240, 255);
+                _btnActivo.Invalidate();
             }
-            btn.BackColor = Color.FromArgb(0, 173, 181);
+            btn.BackColor = Color.FromArgb(18, 62, 98);   // un poco mas claro que el menu
             btn.ForeColor = Color.White;
             _btnActivo = btn;
+            btn.Invalidate();
         }
 
         // ═══════════════════════════════════════════════════════
@@ -368,36 +368,45 @@ namespace MonitoreoOrdenes.Forms
                 BackColor = Color.White
             };
 
+            // Borde fino alrededor de la tarjeta
+            card.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(Color.FromArgb(226, 232, 240)))
+                    e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
+            };
+
             // Barra izquierda de color
             var barra = new Panel
             {
-                Width     = 5,
+                Width     = 4,
                 Dock      = DockStyle.Left,
                 BackColor = color
+            };
+
+            var lblTit = new Label
+            {
+                Text      = titulo.ToUpper(),
+                Font      = new Font("Segoe UI", 8, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Location  = new Point(16, 12),
+                Size      = new Size(130, 18),
+                Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                TextAlign = ContentAlignment.MiddleLeft
             };
 
             var lblValor = new Label
             {
                 Name      = "val",
                 Text      = valor,
-                Font      = new Font("Segoe UI", 22, FontStyle.Bold),
+                Font      = new Font("Segoe UI", 24, FontStyle.Bold),
                 ForeColor = color,
-                Location  = new Point(16, 10),
-                Size      = new Size(130, 42),
+                Location  = new Point(14, 36),
+                Size      = new Size(134, 44),
+                Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
-            var lblTit = new Label
-            {
-                Text      = titulo,
-                Font      = new Font("Segoe UI", 8),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Location  = new Point(16, 55),
-                Size      = new Size(130, 20),
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            card.Controls.AddRange(new Control[] { barra, lblValor, lblTit });
+            card.Controls.AddRange(new Control[] { barra, lblTit, lblValor });
             return card;
         }
 
@@ -629,18 +638,22 @@ namespace MonitoreoOrdenes.Forms
                 Font                        = new Font("Segoe UI", 9),
                 GridColor                   = Color.FromArgb(226, 232, 240),
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
-                RowTemplate                 = { Height = 36 },
+                RowTemplate                 = { Height = 40 },
                 Cursor                      = Cursors.Hand,
-                AutoSizeColumnsMode         = DataGridViewAutoSizeColumnsMode.Fill
+                AutoSizeColumnsMode         = DataGridViewAutoSizeColumnsMode.Fill,
+                EnableHeadersVisualStyles   = false,   // necesario para que se apliquen los colores del encabezado
+                CellBorderStyle             = DataGridViewCellBorderStyle.SingleHorizontal,
+                ColumnHeadersBorderStyle    = DataGridViewHeaderBorderStyle.None
             };
 
             dgvOrdenes.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor          = Color.FromArgb(15, 52, 96),
-                ForeColor          = Color.White,
-                Font               = new Font("Segoe UI", 9, FontStyle.Bold),
-                Padding            = new Padding(8, 0, 0, 0),
-                SelectionBackColor = Color.FromArgb(15, 52, 96)
+                BackColor          = Color.FromArgb(241, 245, 249),
+                ForeColor          = Color.FromArgb(71, 85, 105),
+                Font               = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Padding            = new Padding(8, 8, 0, 8),
+                SelectionBackColor = Color.FromArgb(241, 245, 249),
+                SelectionForeColor = Color.FromArgb(71, 85, 105)
             };
 
             dgvOrdenes.DefaultCellStyle = new DataGridViewCellStyle
@@ -760,18 +773,18 @@ namespace MonitoreoOrdenes.Forms
                     // Color fondo por cumplimiento
                     if (o.Cumplimiento == "Vencida")
                     {
-                        row.DefaultCellStyle.BackColor = Color.FromArgb(254, 226, 226);
-                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 200, 200);
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(254, 242, 242);
+                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 226, 226);
                     }
                     else if (o.Cumplimiento == "Proxima a Vencer" || o.Cumplimiento == "Próxima a Vencer")
                     {
-                        row.DefaultCellStyle.BackColor = Color.FromArgb(254, 243, 199);
-                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 230, 160);
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(255, 249, 230);
+                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 240, 190);
                     }
                     else if (o.Cumplimiento == "A Tiempo")
                     {
-                        row.DefaultCellStyle.BackColor = Color.FromArgb(209, 250, 229);
-                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(180, 240, 210);
+                        row.DefaultCellStyle.BackColor = Color.FromArgb(236, 253, 245);
+                        row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(209, 250, 229);
                     }
 
                     // Color prioridad
