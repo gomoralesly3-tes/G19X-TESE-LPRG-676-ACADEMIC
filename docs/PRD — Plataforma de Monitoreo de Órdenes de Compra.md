@@ -103,7 +103,7 @@ Prioridad: Must (indispensable), Should (importante), Could (deseable). Estado: 
 
 ### D. Recepción e incidencias
 
-- RF-21 Registrar y resolver incidencias de una orden (tipo, descripción y resolución). Must · Pendiente (las tablas y las alertas existen; falta la pantalla).
+- RF-21 Registrar y resolver incidencias de una orden (tipo, descripción y resolución). Must · Listo (implementado en la pestaña «Incidencias» del detalle de la orden, FrmDetalleOrden.cs).
 - RF-22 Registrar recepciones parciales y completas con cantidades por línea. Should · Pendiente (hoy la recepción se refleja solo con el cambio de estatus).
 
 ### E. Alertas
